@@ -12,11 +12,13 @@ import {
   ownStatusLine,
 } from "../src/hooks.js";
 import { loadConfig } from "../src/config.js";
+import { resolveSession } from "../src/hop.js";
 import { makeTerminal } from "../src/term.js";
 import { accountFromEnv, forward, profileDir } from "../src/paths.js";
 import {
   readSessionFile,
   readTurnSamples,
+  wrapperFile,
   wrapperSessionFile,
 } from "../src/sessions.js";
 import { loadRejections, readReading } from "../src/usage.js";
@@ -70,7 +72,7 @@ test("the account comes from CLAUDE_CONFIG_DIR: a Baton profile is its id; plain
 
 test("session start, prompt, stop and session end are recorded for the session and its wrapper", (t) => {
   const { paths } = accountsHome(t);
-  const env = env2(paths, { BATON_WRAPPER: "123-abcd" });
+  const env = env2(paths, { BATON_WRAPPER: "123-abcd", CLAUDE_PID: "4242" });
   handleHook(
     "session-start",
     {
@@ -87,7 +89,13 @@ test("session start, prompt, stop and session end are recorded for the session a
     [start.account, start.source, start.cwd, start.wrapper],
     ["acct2", "startup", "E:/w", "123-abcd"],
   );
-  assert.equal(readJson(wrapperSessionFile(paths, "123-abcd")).session, SID);
+  // With the pid of the claude that wrote it: the wrapper follows only its own.
+  assert.deepEqual(
+    (({ session, pid }) => ({ session, pid }))(
+      readJson(wrapperSessionFile(paths, "123-abcd")),
+    ),
+    { session: SID, pid: 4242 },
+  );
   handleHook(
     "prompt",
     { session_id: SID, permission_mode: "acceptEdits", prompt: "hi" },
@@ -667,4 +675,16 @@ test("baton policy --status-line-usage turns the addition on and off, and it is 
   assert.equal(policy("--status-line-usage", "maybe").status, 2);
   assert.equal(policy("--status-line-usage", "default").status, 0);
   assert.equal(value(), false);
+});
+
+test("baton hop inside a session names the conversation its wrapper follows, not one a claude started inside wrote", (t) => {
+  const { paths } = accountsHome(t);
+  const NESTED = "0d9c8b7a-6f5e-4d3c-2b1a-0f9e8d7c6b5a";
+  const env = { BATON_WRAPPER: "123-abcd" };
+  // Before the wrapper has taken a conversation up: its mapping.
+  write(wrapperSessionFile(paths, "123-abcd"), { session: SID, pid: 1 });
+  assert.equal(resolveSession(paths, { env }), SID);
+  write(wrapperFile(paths, "123-abcd"), { wrapper: "123-abcd", session: SID });
+  write(wrapperSessionFile(paths, "123-abcd"), { session: NESTED, pid: 2 });
+  assert.equal(resolveSession(paths, { env }), SID);
 });

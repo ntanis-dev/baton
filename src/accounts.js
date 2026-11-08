@@ -18,6 +18,17 @@ import { forgetCopies } from "./copies.js";
 
 export class AccountError extends Error {}
 
+// config.json to change and save back: one that cannot be read stops the
+// change instead of being saved over as an empty config.
+function loadForChange(paths) {
+  try {
+    return loadConfig(paths, { strict: true });
+  } catch (error) {
+    if (error instanceof ConfigError) throw new AccountError(error.message);
+    throw error;
+  }
+}
+
 // Accounts are named by their name (case-insensitive, else their id) from
 // the CLI; { by: "id" } names them by id (the menu). Every result carries
 // both.
@@ -76,7 +87,7 @@ export function addAccount(
   name,
   { mark = null, position = null, fileLinks = null } = {},
 ) {
-  const config = loadConfig(paths);
+  const config = loadForChange(paths);
   name = checkName(config, name);
   const account = {
     id: newId(paths, config, name),
@@ -107,7 +118,7 @@ export function addAccount(
 // running claude may use as CLAUDE_CONFIG_DIR), the files and the history
 // stay, and everything shows the new name from then on.
 export function renameAccount(paths, key, newName, { by = "name" } = {}) {
-  const config = loadConfig(paths);
+  const config = loadForChange(paths);
   const account = need(config, key, by);
   const from = account.name;
   account.name = checkName(config, newName, account);
@@ -119,7 +130,7 @@ export function renameAccount(paths, key, newName, { by = "name" } = {}) {
 // or launched under again. Its profile folder (with its sign-in) stays. The
 // last account cannot go.
 export function removeAccount(paths, key, { by = "name" } = {}) {
-  const config = loadConfig(paths);
+  const config = loadForChange(paths);
   const account = need(config, key, by);
   if (config.accounts.length === 1)
     throw new AccountError(
@@ -139,7 +150,7 @@ export function removeAccount(paths, key, { by = "name" } = {}) {
 
 // New order: the accounts given first, in that order; the rest keep theirs.
 export function orderAccounts(paths, keys, { by = "name" } = {}) {
-  const config = loadConfig(paths);
+  const config = loadForChange(paths);
   const first = keys.map((k) => need(config, k, by));
   if (new Set(first).size !== first.length)
     throw new AccountError("An account appears twice.");
@@ -150,7 +161,7 @@ export function orderAccounts(paths, keys, { by = "name" } = {}) {
 }
 
 export function moveAccount(paths, key, position, { by = "name" } = {}) {
-  const config = loadConfig(paths);
+  const config = loadForChange(paths);
   const account = need(config, key, by);
   const at = Number(position) - 1;
   if (!Number.isInteger(at) || at < 0 || at >= config.accounts.length)
@@ -164,7 +175,7 @@ export function moveAccount(paths, key, position, { by = "name" } = {}) {
 // set: { mark, lastResort (true|false), fiveHour, weekly } (null clears a
 // threshold override back to the policy default).
 export function setAccount(paths, key, changes, { by = "name" } = {}) {
-  const config = loadConfig(paths);
+  const config = loadForChange(paths);
   const account = need(config, key, by);
   if (changes.mark !== undefined) account.mark = checkMark(changes.mark);
   if (changes.lastResort !== undefined)
@@ -182,7 +193,7 @@ export function setAccount(paths, key, changes, { by = "name" } = {}) {
 }
 
 export function setPolicy(paths, changes) {
-  const config = loadConfig(paths);
+  const config = loadForChange(paths);
   for (const [key, value] of Object.entries(changes)) {
     if (value === undefined) continue;
     try {

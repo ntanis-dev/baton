@@ -26,6 +26,11 @@ export function resolveSession(paths, { session, env = process.env }) {
     return session;
   }
   if (validId(env.BATON_WRAPPER)) {
+    // The conversation the wrapper follows; its mapping only before the
+    // wrapper has taken it up (a claude started inside the session writes
+    // the mapping too, and the wrapper does not follow that one).
+    const held = readJson(wrapperFile(paths, env.BATON_WRAPPER));
+    if (validId(held?.session)) return held.session;
     const mapped = readJson(wrapperSessionFile(paths, env.BATON_WRAPPER));
     if (validId(mapped?.session)) return mapped.session;
   }

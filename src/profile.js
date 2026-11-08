@@ -347,6 +347,40 @@ export function inspectProfile(
 const normalizeProjectKey = (key) =>
   key.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 
+const isMap = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+
+// One seeded project key, the profile's value and the incoming one merged:
+// what either side granted stays (true over false, the higher count, both
+// lists, both server maps with the incoming entry for a name both have).
+function mergeProjectValue(own, value) {
+  if (own === undefined) return value;
+  if (typeof own === "boolean" && typeof value === "boolean")
+    return own || value;
+  if (typeof own === "number" && typeof value === "number")
+    return Math.max(own, value);
+  if (Array.isArray(own) && Array.isArray(value)) {
+    const seen = new Set();
+    return [...value, ...own].filter((v) => {
+      const key = JSON.stringify(v);
+      return !seen.has(key) && seen.add(key);
+    });
+  }
+  if (isMap(own) && isMap(value)) return { ...own, ...value };
+  return value;
+}
+
+// A folder's seeded keys merged into the profile's entry for it, never put
+// in place of it: Claude Code saves every folder with its defaults (trust
+// false, empty lists), so a plain copy would take back the trust the
+// profile has (its own, or the one a hop just carried to it) at every
+// launch.
+function withProjectKeys(own, picked) {
+  const out = { ...(own ?? {}) };
+  for (const [key, value] of Object.entries(picked))
+    out[key] = mergeProjectValue(out[key], value);
+  return out;
+}
+
 // The seed: allowlisted keys from ~/.claude.json merged into the
 // profile's own (pure). Account-identity keys are never taken from the
 // source; the profile's own values for them are kept.
@@ -362,7 +396,7 @@ export function seedGlobalConfig(source, target) {
       for (const key of SEED_PROJECT_KEYS)
         if (key in entry) picked[key] = entry[key];
       if (!Object.keys(picked).length) continue;
-      projects[path] = { ...(projects[path] ?? {}), ...picked };
+      projects[path] = withProjectKeys(projects[path], picked);
     }
     out.projects = projects;
   }
@@ -398,7 +432,7 @@ export function carryTrust(paths, from, to, cwd) {
       continue;
     const picked = {};
     for (const k of SEED_PROJECT_KEYS) if (k in entry) picked[k] = entry[k];
-    const merged = { ...(projects[key] ?? {}), ...picked };
+    const merged = withProjectKeys(projects[key], picked);
     if (JSON.stringify(merged) !== JSON.stringify(projects[key])) {
       projects[key] = merged;
       changed = true;

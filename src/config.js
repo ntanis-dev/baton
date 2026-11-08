@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { ACCOUNT_ID_RE } from "./paths.js";
-import { readJson, writeJsonAtomic } from "./fsutil.js";
+import { sleepSync, writeJsonAtomic } from "./fsutil.js";
 import { cleanName, idFromName, sameName, validName } from "./names.js";
 
 // ~/.baton/config.json: the accounts the operator added, in priority order,
@@ -148,9 +149,57 @@ export function normalizeConfig(raw) {
   };
 }
 
+// config.json as written, or null when there is none. One that is there
+// but cannot be read or is not a config throws: read as empty, the next
+// change would save an empty config over every account. A read that fails
+// the way Windows fails one while another process replaces the file (or a
+// virus scanner holds it) is retried briefly first.
+function readConfigFile(file) {
+  for (let attempt = 0; ; attempt++) {
+    let text;
+    try {
+      text = readFileSync(file, "utf8");
+    } catch (error) {
+      if (error.code === "ENOENT") return null;
+      if (attempt < 6 && ["EPERM", "EACCES", "EBUSY"].includes(error.code)) {
+        sleepSync(5 * (attempt + 1));
+        continue;
+      }
+      throw new ConfigError(`Cannot read ${file}: ${error.message}`);
+    }
+    let raw;
+    try {
+      raw = JSON.parse(text);
+    } catch (error) {
+      throw new ConfigError(
+        `${file} is not valid JSON (${error.message}); fix it, or move it away to start over.`,
+      );
+    }
+    if (
+      !raw ||
+      typeof raw !== "object" ||
+      Array.isArray(raw) ||
+      (raw.accounts !== undefined && !Array.isArray(raw.accounts))
+    )
+      throw new ConfigError(
+        `${file} is not a Baton config; fix it, or move it away to start over.`,
+      );
+    return raw;
+  }
+}
+
 // Reads config.json (what is missing or invalid falls back to its default).
-export const loadConfig = (paths) =>
-  normalizeConfig(readJson(paths.config, null) ?? {});
+// strict: a config.json that is there but cannot be read throws instead
+// (what reads it to change it and save it back).
+export function loadConfig(paths, { strict = false } = {}) {
+  let raw = null;
+  try {
+    raw = readConfigFile(paths.config);
+  } catch (error) {
+    if (strict) throw error;
+  }
+  return normalizeConfig(raw ?? {});
+}
 
 // An account by its name (case-insensitive), else by its id (the CLI);
 // by: "id" finds by id only (the menu, the lead).

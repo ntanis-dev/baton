@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, openSync, closeSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, closeSync } from "node:fs";
 import { join } from "node:path";
 import { readJsonLines } from "../src/fsutil.js";
 import { Lead } from "../src/lead.js";
@@ -21,6 +21,8 @@ import {
 } from "./helpers.js";
 
 const SID = "6f0b2d4e-1c3a-4b5d-8e9f-0a1b2c3d4e5f";
+const NESTED = "0d9c8b7a-6f5e-4d3c-2b1a-0f9e8d7c6b5a";
+const CLEARED = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
 const H = 3600;
 
 function consoleAvailable() {
@@ -44,12 +46,13 @@ function lead(
     readings = {},
     countdown = 0.3,
     method = "kill",
+    launcher = false,
   },
 ) {
   const { home, root, paths } = tempHome(t);
   const dir = join(root, "fake");
   mkdirSync(dir, { recursive: true });
-  write(join(dir, "scenario.json"), { session: SID, runs });
+  write(join(dir, "scenario.json"), { session: SID, runs, launcher });
   write(paths.config, {
     version: 1,
     accounts: accounts.map((a) =>
@@ -752,5 +755,84 @@ test(
       profileDir(run.paths, "acct2"),
       "acct1 is blocked: acct2",
     );
+  },
+);
+
+// What `claude -p` run inside the conversation does: the same profile and
+// BATON_WRAPPER, its own pid and session.
+const nestedRun = [
+  { nested: { hook: "session-start", session_id: NESTED } },
+  { nested: { hook: "prompt", session_id: NESTED } },
+  { nested: { hook: "stop", session_id: NESTED } },
+  { nested: { hook: "session-end", session_id: NESTED } },
+  { sleep: 300 },
+];
+
+test(
+  "a claude started inside the conversation does not take the wrapper over",
+  { timeout: 60000 },
+  async (t) => {
+    const [start, statusline, prompt, failure] = limited();
+    const run = lead(t, {
+      runs: [
+        {
+          steps: [
+            start,
+            statusline,
+            prompt,
+            { sleep: 300 },
+            ...nestedRun,
+            failure,
+            { wait: "end" },
+          ],
+        },
+        { steps: [{ hook: "session-start" }, { exit: 0 }] },
+      ],
+    });
+    assert.equal(await run.done, 0);
+    const [, second] = run.invocations();
+    assert.equal(second.configDir, profileDir(run.paths, "acct2"));
+    assert.deepEqual(second.argv.slice(-3, -1), ["--resume", SID]);
+    assert.equal(run.lead.sessionId, SID);
+    assert.ok(!existsSync(join(run.paths.sessions, NESTED, "lock.json")));
+    assert.ok(
+      !run.lead.events.some(
+        (e) => e.message === "session" && e.session === NESTED,
+      ),
+    );
+  },
+);
+
+test(
+  "behind a launcher the wrapper follows the claude whose hooks report first, and only it",
+  { timeout: 60000 },
+  async (t) => {
+    const [start, statusline, prompt, failure] = limited();
+    const run = lead(t, {
+      launcher: true,
+      runs: [
+        {
+          steps: [
+            start,
+            statusline,
+            { sleep: 300 },
+            // /clear: the same claude, a new conversation.
+            { hook: "session-start", source: "clear", session_id: CLEARED },
+            { sleep: 300 },
+            ...nestedRun,
+            { ...prompt, session_id: CLEARED },
+            { ...failure, session_id: CLEARED },
+            { wait: "end" },
+          ],
+        },
+        { steps: [{ hook: "session-start" }, { exit: 0 }] },
+      ],
+    });
+    assert.equal(await run.done, 0);
+    const [first, second] = run.invocations();
+    assert.deepEqual(second.argv.slice(-3, -1), ["--resume", CLEARED]);
+    assert.equal(run.lead.sessionId, CLEARED);
+    const bound = run.lead.events.find((e) => e.message === "claude pid");
+    assert.deepEqual([bound.spawned, bound.pid], [first.pid, first.pid + 1]);
   },
 );

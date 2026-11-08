@@ -315,3 +315,75 @@ test("folder trust moves with a session to the next profile, never into ~/.claud
     projects: {},
   });
 });
+
+test("the seed never takes back what a profile has: its own trust, its approvals, its counts", () => {
+  // Claude Code saves every folder with its defaults: trust false, empty lists.
+  const source = {
+    projects: {
+      "E:/w": {
+        hasTrustDialogAccepted: false,
+        projectOnboardingSeenCount: 0,
+        allowedTools: ["Bash"],
+        enabledMcpjsonServers: [],
+        mcpServers: { shared: { command: "a" } },
+      },
+      "E:/granted": { hasTrustDialogAccepted: true },
+    },
+  };
+  const target = {
+    projects: {
+      "E:/w": {
+        hasTrustDialogAccepted: true,
+        projectOnboardingSeenCount: 3,
+        allowedTools: ["Read", "Bash"],
+        enabledMcpjsonServers: ["local"],
+        mcpServers: { own: { command: "b" } },
+      },
+      "E:/granted": { hasTrustDialogAccepted: false, lastCost: 1 },
+    },
+  };
+  const out = seedGlobalConfig(source, target);
+  assert.deepEqual(out.projects["E:/w"], {
+    hasTrustDialogAccepted: true,
+    projectOnboardingSeenCount: 3,
+    allowedTools: ["Bash", "Read"],
+    enabledMcpjsonServers: ["local"],
+    mcpServers: { own: { command: "b" }, shared: { command: "a" } },
+  });
+  // What ~/.claude.json grants still reaches the profile.
+  assert.deepEqual(out.projects["E:/granted"], {
+    hasTrustDialogAccepted: true,
+    lastCost: 1,
+  });
+  // A second refresh changes nothing.
+  assert.deepEqual(seedGlobalConfig(source, out), out);
+});
+
+test("trust carried by a hop survives the next profile's refresh at launch", (t) => {
+  const { paths } = tempHome(t);
+  write(paths.claudeJson, {
+    hasCompletedOnboarding: true,
+    projects: {
+      "E:/new": { hasTrustDialogAccepted: false, allowedTools: [] },
+    },
+  });
+  write(join(profileDir(paths, "a2"), ".claude.json"), {
+    projects: { "E:/new": { hasTrustDialogAccepted: true, allowedTools: [] } },
+  });
+  write(join(profileDir(paths, "a3"), ".claude.json"), {
+    oauthAccount: { emailAddress: "a3" },
+  });
+  const trusted = (id) =>
+    JSON.parse(
+      readFileSync(join(profileDir(paths, id), ".claude.json"), "utf8"),
+    ).projects["E:/new"].hasTrustDialogAccepted;
+  // The order the lead wrapper launches in: carry, then refresh the profile.
+  assert.equal(carryTrust(paths, "a2", "a3", "E:/new"), true);
+  linkProfile(paths, "a3", { fileLinks: false });
+  assert.equal(trusted("a3"), true);
+  // Every later launch on either profile keeps it.
+  linkProfile(paths, "a2", { fileLinks: false });
+  linkProfile(paths, "a3", { fileLinks: false });
+  assert.equal(trusted("a2"), true);
+  assert.equal(trusted("a3"), true);
+});

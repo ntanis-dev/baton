@@ -103,6 +103,10 @@ export class Lead {
       ? this.parsed.session.id
       : null;
     this.account = null;
+    // The claude this wrapper started: the pid its hooks report, and whether
+    // a mapping from it has been seen since the launch.
+    this.claudePid = null;
+    this.claudeSeen = false;
     this.arrivedAt = null;
     this.launchedAt = 0;
     this.lastTurnAt = 0;
@@ -339,6 +343,8 @@ export class Lead {
     });
     const child = this.spawn(launcher, launch.account, launch.args, launch.cwd);
     if (!child) return { type: "exit", code: 1 };
+    this.claudePid = child.pid ?? null;
+    this.claudeSeen = false;
     let exitInfo = null;
     const exited = new Promise((resolve) => {
       child.once("exit", (code, signal) => {
@@ -394,11 +400,37 @@ export class Lead {
     this.log("session", { session: id, previous });
   }
 
+  // Whether the session mapping was written by the claude this wrapper
+  // started. A claude started inside the session (a `claude -p` it runs, a
+  // hook's) inherits BATON_WRAPPER and its hooks write the same mapping;
+  // following it would hand this wrapper another conversation. The mapping
+  // carries the writer's pid (none from a Claude Code that does not give
+  // it: taken, as before). The first one written after a launch that is not
+  // the spawned process's binds its pid (a launcher in between): nothing
+  // inside claude runs before claude's own SessionStart.
+  fromOwnClaude(mapped) {
+    if (!Number.isInteger(mapped.pid)) return true;
+    if (mapped.pid === this.claudePid) {
+      this.claudeSeen = true;
+      return true;
+    }
+    if (this.claudeSeen || (ms(mapped.at) ?? 0) < this.launchedAt) return false;
+    this.log("claude pid", { spawned: this.claudePid, pid: mapped.pid });
+    this.claudePid = mapped.pid;
+    this.claudeSeen = true;
+    return true;
+  }
+
   // One look at the session's files. Returns a decision to end claude
   // (type hop|wait) or null.
   async poll(isExited) {
     const mapped = readJson(wrapperSessionFile(this.paths, this.wrapper));
-    if (mapped && validId(mapped.session) && mapped.session !== this.sessionId)
+    if (
+      mapped &&
+      validId(mapped.session) &&
+      this.fromOwnClaude(mapped) &&
+      mapped.session !== this.sessionId
+    )
       this.switchSession(mapped.session);
     const id = this.sessionId;
     if (!id) return null;

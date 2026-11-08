@@ -50,6 +50,15 @@ export function batonAccount(env, paths) {
   }
 }
 
+// The pid of the Claude Code process running this hook or status line
+// (Claude Code sets CLAUDE_PID for them), or null. It goes with the
+// wrapper's session mapping: a claude started inside a session inherits
+// BATON_WRAPPER, and the wrapper follows only the claude it started.
+export function claudePid(env) {
+  const pid = Number(env.CLAUDE_PID);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
 export const HOOK_EVENTS = {
   "session-start": "SessionStart",
   prompt: "UserPromptSubmit",
@@ -107,6 +116,7 @@ export function handleHook(
         at,
         source,
         account,
+        pid: claudePid(env),
       });
       recorded.push("wrapper");
     }
@@ -285,6 +295,7 @@ export function handleStatusLine(
             at: iso(now),
             source: "statusline",
             account,
+            pid: claudePid(env),
           });
       }
     }

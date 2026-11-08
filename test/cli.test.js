@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { main } from "../src/cli.js";
 import { appendJsonLine } from "../src/fsutil.js";
@@ -182,6 +182,38 @@ test("accounts: add, order, marks, thresholds, remove", async (t) => {
     config.accounts.map((a) => a.name),
     ["acct4"],
   );
+});
+
+test("a config.json that cannot be read stops a change instead of being saved over every account", async (t) => {
+  const { home, paths } = tempHome(t);
+  const broken = `{
+  "version": 1,
+  "accounts": [
+    { "id": "acct1", "name": "acct1", "mark": "normal" },
+    { "id": "acct2", "name": "acct2", "mark": "normal" },
+  ]
+}
+`;
+  write(paths.config, broken);
+  for (const argv of [
+    ["account", "add", "acct3"],
+    ["account", "rename", "acct1", "one"],
+    ["account", "set", "acct1", "--mark", "preferred"],
+    ["policy", "--mode", "order"],
+  ]) {
+    const r = await baton(home, ...argv);
+    assert.equal(r.code, 2, argv.join(" "));
+    assert.match(r.err, /config\.json is not valid JSON/);
+  }
+  assert.equal(readFileSync(paths.config, "utf8"), broken);
+  // Nor one that is not a config.
+  write(paths.config, { version: 1, accounts: { acct1: {} } });
+  const notConfig = await baton(home, "account", "add", "acct3");
+  assert.equal(notConfig.code, 2);
+  assert.match(notConfig.err, /is not a Baton config/);
+  // None at all is a first run: the change makes one.
+  rmSync(paths.config);
+  assert.equal((await baton(home, "account", "add", "acct3")).code, 0);
 });
 
 test("status: accounts with their windows, blocks, sessions and where new work goes", async (t) => {

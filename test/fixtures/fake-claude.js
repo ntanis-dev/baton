@@ -7,7 +7,10 @@
 // scenario.json: { "runs": [ { "steps": [ ... ] }, ... ] } (run n is the n-th
 // start; the last run repeats). Steps:
 //   { "hook": "session-start" | "prompt" | "stop" | "stop-failure" | "session-end", ...fields }
-//   { "statusline": { "five_hour": [used, resetsInSeconds], "seven_day": [...] }, "model": "...", "effort": "..." }
+//   { "nested": { "hook": "...", "session_id": "...", ...fields } }
+//                                          a hook of a claude started inside this one
+//                                          (same profile and BATON_WRAPPER, its own pid)
+//   { "statusline":{ "five_hour": [used, resetsInSeconds], "seven_day": [...] }, "model": "...", "effort": "..." }
 //   { "hop": "<account or empty>" }        what /hop runs
 //   { "sleep": ms }
 //   { "waitFile": "<name in FAKE_CLAUDE_DIR>" }
@@ -63,11 +66,17 @@ const session =
   scenario.session ??
   randomUUID();
 
-function baton(args, input) {
+// Claude Code gives its hooks and status line its own pid (CLAUDE_PID):
+// this process's, or another one's when the scenario plays a claude started
+// through a launcher ("launcher": true) that is the process Baton spawned.
+const ownPid = process.pid + (scenario.launcher ? 1 : 0);
+const nestedPid = process.pid + 2;
+
+function baton(args, input, pid = ownPid) {
   const result = spawnSync(process.execPath, [cli, ...args], {
     input: input === undefined ? "" : JSON.stringify(input),
     encoding: "utf8",
-    env: process.env,
+    env: { ...process.env, CLAUDE_PID: String(pid) },
   });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
@@ -142,6 +151,16 @@ for (const step of run.steps) {
       input.source = argv.includes("--resume") ? "resume" : "startup";
     const r = baton(["hook", hook], input);
     log("hook", { hook, code: r.code, stdout: r.stdout, run: invocations });
+  } else if (step.nested) {
+    const { hook, ...fields } = step.nested;
+    const input = {
+      ...base(),
+      hook_event_name: hook,
+      ...(hook === "session-start" ? { source: "startup" } : {}),
+      ...fields,
+    };
+    const r = baton(["hook", hook], input, nestedPid);
+    log("nested", { hook, code: r.code, run: invocations });
   } else if (step.statusline) {
     const now = Math.floor(Date.now() / 1000);
     const limits = {};

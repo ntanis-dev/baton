@@ -27,6 +27,7 @@ use baton_core::fsutil::{is_alive, read_json, read_json_lines};
 use baton_core::json::Get;
 use baton_core::paths::{Paths, profile_dir};
 use baton_core::poll::poll_holder;
+use baton_core::sessions::list_wrappers;
 use baton_core::state::{Want, load_snapshot};
 use baton_core::usage::history_file;
 use baton_testkit::fixtures::{FAKE_CLAUDE, FAKE_CLAUDE_BOTH, baton, bin, launcher};
@@ -677,6 +678,15 @@ fn manual_hop_from_another_terminal_while_the_conversation_is_between_turns_to_a
         ]))
     });
     until(|| run.has_step("waiting").then_some(()));
+    // `baton hop` finds the conversation through the wrapper's record, which names it once the
+    // wrapper has taken it up: one look at the session's files, and this stand-in gets to its wait
+    // faster than that on a fast machine.
+    until(|| {
+        list_wrappers(run.paths())
+            .iter()
+            .any(|wrapper| wrapper.text("session") == Some(SID))
+            .then_some(())
+    });
     let (code, out, err) = baton_in(&run.home, &["hop", "--to", "acct3"]);
     assert_eq!(code, Some(0), "{err}");
     assert!(out.contains("moves from acct1 to acct3 now"), "{out}");

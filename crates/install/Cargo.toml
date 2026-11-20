@@ -1,0 +1,22 @@
+[package]
+name = "baton-install"
+description = "What baton install puts into ~/.claude: the hooks and the status line, the /hop command and the Ferry registration."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+baton-core = { workspace = true }
+regex = { workspace = true }
+# float_roundtrip: a number in the operator's settings.json is read exactly, so it is written back as it was.
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+baton-testkit = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

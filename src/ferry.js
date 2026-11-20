@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { findOnPath } from "./claude-path.js";
@@ -13,6 +14,12 @@ import { forward, samePath } from "./paths.js";
 // real one). The file runs node + Baton's cli.js directly (exec form, like
 // the hooks): no shell and no .cmd shim. Its format is Ferry's launcher
 // schema, version 1.
+//
+// The file names Claude Code's own option for starting without asking for
+// approval (bypassArgs), so Ferry's bypass-permissions setting and the Bypass
+// of a running session cover Baton as they do Claude Code. The setting stays
+// Ferry's and the operator's: Baton names the option and turns nothing on.
+// Ferry puts the option first, and Baton hands it to claude with the rest.
 
 export const LAUNCHER_ID = "baton";
 export const LAUNCHER_SOURCE = "baton install";
@@ -35,8 +42,9 @@ export const launcherPath = (data) =>
 // this user's only, and so is the launcher file, as Ferry writes its own.
 export const PRIVATE = { dirMode: 0o700, mode: 0o600 };
 
-// { found, data, file, program }: program is where `ferry` is on PATH, looked
-// up only when the data folder does not exist. findFerry() -> path | null
+// { found, data, file, program, cli }: cli is where `ferry` is on PATH (null
+// when it is not), and program the same, but only when the data folder does
+// not exist (then it is what says Ferry is here). findFerry() -> path | null
 // replaces the PATH lookup (the tests pass their own).
 export function detectFerry({
   paths,
@@ -45,14 +53,76 @@ export function detectFerry({
   findFerry = () => findOnPath("ferry", { env, platform }),
 }) {
   const data = ferryHome(paths, env);
-  const program = isDir(data) ? null : (findFerry() ?? null);
+  const cli = findFerry() ?? null;
+  const program = isDir(data) ? null : cli;
   return {
     found: program !== null || isDir(data),
     data,
     file: launcherPath(data),
     program,
+    cli,
   };
 }
+
+// ---- The agent Ferry opens -------------------------------------------------
+// Ferry's `c` key and `ferry agent` open one agent launcher: its "agent"
+// setting. Baton takes that place while it is registered, through Ferry's
+// own CLI (`ferry config agent baton`), so the setting stays Ferry's to
+// check and keep; `baton uninstall` puts the one before back. A launcher
+// chosen on purpose (anything but Ferry's default or its built-in Claude
+// Code) stays. runFerry(program, args, env) -> { status, stdout, stderr }
+// runs Ferry (the tests pass their own).
+
+// Ferry's built-in Claude Code launcher, which Baton stands in for.
+export const CLAUDE_LAUNCHER = "claude";
+
+// Claude Code's option that starts it without asking for approval: what Ferry
+// adds for a launcher its bypass-permissions setting names.
+export const BYPASS_ARG = "--dangerously-skip-permissions";
+
+export function runFerrySync(program, args, env = process.env) {
+  const result = spawnSync(program, args, {
+    env,
+    encoding: "utf8",
+    timeout: 20e3,
+    windowsHide: true,
+  });
+  return {
+    status: result.error ? null : result.status,
+    stdout: result.stdout ?? "",
+    stderr: (result.error?.message ?? result.stderr ?? "").toString(),
+  };
+}
+
+// What `c` opens: { value, default } from `ferry config agent --json` (value
+// is a launcher id, or "default" for the first installed), or null when
+// Ferry did not say.
+export function ferryAgent(
+  program,
+  { env = process.env, runFerry = runFerrySync } = {},
+) {
+  const result = runFerry(program, ["config", "agent", "--json"], env);
+  if (result.status !== 0) return null;
+  try {
+    const value = JSON.parse(result.stdout);
+    if (value && typeof value.value === "string")
+      return { value: value.value, default: Boolean(value.default) };
+  } catch {
+    // not JSON
+  }
+  return null;
+}
+
+// Whether Baton takes the agent's place: Ferry's default, or its built-in
+// Claude Code.
+export const takesOver = (agent) =>
+  agent.default || agent.value === CLAUDE_LAUNCHER;
+
+export const setFerryAgent = (
+  program,
+  id,
+  { env = process.env, runFerry = runFerrySync } = {},
+) => runFerry(program, ["config", "agent", id], env);
 
 // Braces are Ferry's placeholders: a path's own are doubled.
 const literal = (text) => text.replace(/[{}]/g, "$&$&");
@@ -67,6 +137,7 @@ export function launcherDef(nodePath, cliPath) {
     args: [literal(forward(cliPath))],
     resumeArgs: ["--resume", "{conversation}"],
     continueArgs: ["--continue"],
+    bypassArgs: [BYPASS_ARG],
     conversations: "claude-code",
     terminal: true,
     source: LAUNCHER_SOURCE,

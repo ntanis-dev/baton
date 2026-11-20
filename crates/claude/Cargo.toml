@@ -1,0 +1,34 @@
+[package]
+name = "baton-claude"
+description = "Running Claude Code for Baton: its arguments, ending it gently, the usage check and its poller, and the session wrapper that moves a conversation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# A stand-in for a baton instance in the poll lease tests (tests/poll_host.rs): a PollHost in a process
+# of its own. It lives with the tests and is only built for them.
+[[bin]]
+name = "poll-instance"
+path = "tests/fixtures/poll_instance.rs"
+test = false
+doc = false
+
+[dependencies]
+baton-core = { workspace = true }
+baton-profile = { workspace = true }
+base64 = { workspace = true }
+crossterm = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+baton-testkit = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

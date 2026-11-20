@@ -7,7 +7,12 @@ import { resolveClaude } from "./claude-path.js";
 import { loadConfig, nameOf } from "./config.js";
 import { installState } from "./install.js";
 import { profileDir, profileEnv } from "./paths.js";
-import { registrationState } from "./ferry.js";
+import {
+  LAUNCHER_ID,
+  detectFerry,
+  ferryAgent,
+  registrationState,
+} from "./ferry.js";
 import { canSymlinkFiles, inspectProfile } from "./profile.js";
 import { statusLineShell } from "./hooks.js";
 import { readConflicts } from "./copies.js";
@@ -108,7 +113,8 @@ function ferryCheck(r) {
   }
 }
 
-// cliPath and findFerry: for the Ferry registration (ferry.js).
+// cliPath, findFerry and runFerry: for the Ferry registration and the agent
+// Ferry opens (ferry.js).
 export function runDoctor({
   paths,
   env = process.env,
@@ -116,6 +122,7 @@ export function runDoctor({
   auth = true,
   cliPath = fileURLToPath(new URL("./cli.js", import.meta.url)),
   findFerry,
+  runFerry,
 }) {
   const checks = [];
   const add = (name, ok, detail) => checks.push({ name, ok, detail });
@@ -278,5 +285,22 @@ export function runDoctor({
       registrationState({ paths, env, platform, findFerry, cliPath }),
     ),
   );
+  // Which agent `c` opens there: Baton, or another by choice (no failure).
+  const ferry = detectFerry({ paths, env, platform, findFerry });
+  if (ferry.found) {
+    const agent = ferry.cli ? ferryAgent(ferry.cli, { env, runFerry }) : null;
+    const baton = agent?.value === LAUNCHER_ID;
+    add(
+      "Ferry's agent",
+      baton ? true : null,
+      !ferry.cli
+        ? "not checked: ferry is not on PATH"
+        : !agent
+          ? "not checked: ferry config agent did not answer"
+          : baton
+            ? "Baton: c opens it"
+            : `${agent.value}: ferry config agent baton makes it Baton`,
+    );
+  }
   return { ok: checks.every((c) => c.ok !== false), checks };
 }

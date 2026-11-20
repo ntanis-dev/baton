@@ -1,0 +1,54 @@
+[package]
+name = "baton-testkit"
+description = "Test support for Baton: temporary homes and stand-ins for the claude executable."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The stand-ins for the claude executable (src/fake_*.rs), each a program of its own; fixtures.rs finds them.
+[[bin]]
+name = "claude-stub"
+path = "src/bin/claude-stub.rs"
+test = false
+
+[[bin]]
+name = "fake-claude"
+path = "src/bin/fake-claude.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fake-claude-both"
+path = "src/bin/fake-claude-both.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fake-login"
+path = "src/bin/fake-login.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fake-usage-claude"
+path = "src/bin/fake-usage-claude.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "raw-reader"
+path = "src/bin/raw-reader.rs"
+test = false
+doc = false
+
+[dependencies]
+baton-core = { workspace = true }
+crossterm = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+uuid = { workspace = true }
+
+[lints]
+workspace = true

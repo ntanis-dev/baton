@@ -27,7 +27,7 @@
         "description": "Baton never reads a credential and never touches your default Claude Code account."
       }
     ],
-    "technologies": ["Node", "Ink", "React"],
+    "technologies": ["Rust"],
     "gallery": []
   },
   "hosting": {

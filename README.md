@@ -10,17 +10,18 @@ over.
 - Baton keeps track of every account's usage and picks the best one for new work.
 - When one runs out, the same conversation resumes on another.
 
-Needs Node 24 or newer. Built and tested on Windows 11; macOS and Linux should work the same way but have not been
-tested yet. Baton is an independent project and is not affiliated with Anthropic (see
-[Good to know](#good-to-know)).
+Written in Rust: one small executable, no runtime to install. Built and tested on Windows 11; macOS and Linux should
+work the same way but have not been tested yet. Baton is an independent project and is not affiliated with Anthropic
+(see [Good to know](#good-to-know)).
 
 ## Quick start
+
+You need [Rust](https://rustup.rs); the repository's `rust-toolchain.toml` picks the version.
 
 ```sh
 git clone https://github.com/ntanis-dev/baton.git
 cd baton
-npm install
-npm link            # puts `baton` on your PATH
+cargo install --locked --path crates/cli   # puts `baton` on your PATH
 ```
 
 Add your accounts and sign each one in. A name can be anything: an email, a few words, a label you like.
@@ -59,7 +60,8 @@ baton view                          # or open the menu
 | `baton policy`             | Shows the settings; change one with `baton policy --mode order`, `--start-reserve 25` ... |
 | `baton hop [--to account]` | Moves a running conversation at the end of its turn (inside Claude: `/hop [account]`)     |
 | `baton account ...`        | `list`, `add`, `rename`, `remove`, `order`, `move`, `set` (marks and thresholds)          |
-| `baton doctor`             | Checks Claude Code, every profile, the install and the Ferry registration                 |
+| `baton sync`               | Brings every account's setup in step now, and lists what the accounts differ on           |
+| `baton doctor`             | Checks Claude Code, every profile, the install, the Ferry registration and Ferry's agent  |
 | `baton conflicts`          | Shared files changed in two places at once, with the backups kept                         |
 
 `baton help <command>` shows a command's options, and `--json` prints data instead of the screen where that makes
@@ -92,9 +94,41 @@ Baton watches each turn end and decides what to do:
 - **Every account is blocked.** Baton shows who is back first, waits with a live countdown, and resumes there.
 - **You ask.** `/hop [account]` inside Claude Code, or `baton hop` from another terminal.
 
+Hops that follow one another go on, not back: until a turn has ended well on an account and the conversation has been
+there for the minimum stay (30 minutes, `baton policy --min-stay <minutes>`), it is not moved back to an account it
+just left while another one is open. Only when it has been through all of them does it return, to the one it left
+longest ago. `/hop <account>` still goes exactly where you say.
+
 Which account gets the work? In the default `smart` mode: a preferred account with at least 20% of its 5-hour window
 left; otherwise the normal account whose weekly allowance is most at risk of going unused; last-resort accounts only
 when nothing else is open. In `order` mode it is simply the first open account in your order.
+
+## One setup, every account
+
+Set Claude Code up once and every account has it. Settings, skills, plugins, agents, commands, output styles, memory
+and conversations are the same files for every account, and Baton keeps the rest in step (full sync, on by default):
+
+- **What you set in Claude Code itself.** The theme and other preferences, your MCP servers, and for every folder its
+  trust, allowed tools and MCP approvals. Change one under any account and the others have it the next time they are
+  used.
+- **It follows the conversation.** Add an MCP server on the current account, and when the conversation moves on, it is
+  there on the next one.
+- **A new account starts with everything** the others have, except the sign-in.
+- **Nothing you set is written over silently.** When two accounts changed the same setting in different ways, Baton
+  keeps both and asks: at the next `baton` start (press the number of the one to keep) or with `baton sync`.
+
+What is never shared: who an account is (its sign-in and identity), and Claude Code's own caches and counters.
+`~/.claude.json`, plain Claude Code's own file, is only read: what you change there reaches your accounts, never the
+other way round.
+
+```sh
+baton sync                          # bring every account in step now; lists what the accounts differ on
+baton sync take 1 "Work account"    # that account's value for question 1 goes to every account
+baton policy --full-sync off        # each account keeps its own; a new one starts from ~/.claude.json
+```
+
+To keep one more key of `.claude.json` in step, name it in `~/.baton/config.json`: `"syncKeys": ["diffSidebarOpen"]`
+(and `"syncProjectKeys"` for a key of a folder's entry).
 
 ## The menu
 
@@ -124,8 +158,8 @@ Set `NO_COLOR` to drop the colors, `BATON_GLYPHS=plain` for the classic Windows 
   process runs under, and resumes conversations under another one.
 - **Your default Claude Code account stays yours.** Baton uses only the accounts you add, each a profile of its own
   in `~/.baton/accounts/<id>`. Its hooks and status line do nothing in plain `claude`.
-- **`~/.claude` changes only through `baton install`**, which shows what it will do, keeps a backup, and is undone by
-  `baton uninstall`.
+- **The status line, hooks and `/hop` reach `~/.claude` only through `baton install`**, which shows what it will do,
+  keeps a backup, and is undone by `baton uninstall`.
 
 `baton install` adds three things to `~/.claude`:
 
@@ -150,16 +184,23 @@ you still want those sign-ins).
 
 Ferry shows every project in one terminal and opens Claude Code, a shell or a dev server in any of them. When it
 is installed, `baton install` adds Baton to it as a launcher: projects get **Open in Baton**, and the Claude Code
-conversations Ferry lists can be resumed or continued in Baton.
+conversations Ferry lists can be resumed or continued in Baton. It also makes Baton the agent Ferry opens with `c`
+and `ferry agent`, so that is Baton instead of Claude Code.
 
-- Baton writes one file, `~/.ferry/launchers/baton.json` (under `FERRY_HOME` if you set it). It runs your
-  `node` with Baton's `src/cli.js` directly, no shell involved. A different file already there is backed up first.
+- Baton writes one file, `~/.ferry/launchers/baton.json` (under `FERRY_HOME` if you set it). It runs the `baton`
+  executable directly, no shell involved. A different file already there is backed up first.
   The file, and any folder Baton creates for it, is readable by you only, as Ferry makes its own. If it cannot be
   written, `baton install` says why and installs the rest.
 - Ferry counts as installed when its data folder exists or `ferry` is on your PATH. If it is not, the plan says
   so in one line; run `baton install` again after installing it.
-- `baton doctor` says whether the registration is current. After moving Baton or changing Node, run `baton install`
-  again.
+- The agent Ferry opens is Ferry's own setting, so Baton sets it through Ferry (`ferry config agent baton`), which
+  needs `ferry` on your PATH. Baton takes the place of Ferry's default or its built-in Claude Code; a launcher you
+  chose on purpose stays, and the plan says so. `baton uninstall` puts the one before back.
+- Ferry's bypass permissions cover Baton too: the file names Claude Code's `--dangerously-skip-permissions`, so
+  Baton has its own switch under Ferry's Settings (`ferry config bypass-permissions +baton`) and running sessions
+  get `Bypass`. Nothing is turned on for you: having it on for `claude` does not turn it on for `baton`.
+- `baton doctor` says whether the registration is current. After moving Baton (or installing it somewhere else),
+  run `baton install` again.
 - `baton uninstall` removes the file, as long as it is still Baton's.
 
 ## More detail
@@ -182,9 +223,13 @@ account runs them:
   (say `/config` under one account) is copied back to `~/.claude`, after a timestamped backup, and on to the other
   profiles. If the same file changed in two places, `~/.claude`'s wins, the other is backed up, and `baton conflicts`
   shows it.
-- The profile's `.claude.json` is its own, because it holds that account's identity. Baton seeds it with your
-  onboarding state, trusted folders and MCP servers (never identity), so a new profile starts without first-run
-  prompts.
+- The profile's `.claude.json` is its own, because it holds that account's identity. With full sync on, what you set
+  in it (preferences, MCP servers, each folder's trust and approvals, the notices you already answered) is kept in step
+  between the accounts whenever a profile is used; never identity. With it off, Baton seeds it from `~/.claude.json` at
+  every start, so a new profile still starts without first-run prompts.
+- With full sync on, a shared folder that `~/.claude` does not have yet is made there, so nothing is born inside one
+  profile. What an older profile kept in a folder of its own is moved into the shared one; where both have the same
+  name, both stay and `baton doctor` says so.
 
 </details>
 
@@ -202,7 +247,12 @@ renamed or signed in, and when you ask (`r` in the menu, or `baton usage --refre
 - **Quiet.** In a `baton` window the check is silent and runs at low priority. It runs Claude Code's `/usage`
   under the account's profile with no settings, hooks, tools or MCP servers loaded, and ends it after 60 seconds.
 - **Honest readings.** Each one says where it came from ("polled 12m ago", "from session 2m ago"). A model's own weekly
-  limit (Fable's, for example) is shown with the account and counts when it is the fuller one. If the usage endpoint is
+  limit (Fable's, for example) has a bar of its own under the weekly one, and holds back the chats that run that model
+  and no others: with Fable's used up and the week not, the account is marked `Fable limit` in amber (not `blocked`, in
+  red), a chat on Fable moves to another account, and a chat on any other model still starts and stays there. Baton
+  knows a chat's model from its status line, or from `--model`; with no model known, the strictest limit holds. A
+  refusal that names a model ("You've hit your Fable limit") counts against that model alone. A plan with no 5-hour
+  limit says so in place of that bar, and nothing of it is waited for. If the usage endpoint is
   rate limited, Baton waits as long as it says (otherwise 5 minutes, doubling up to 2 hours).
 
 `baton status` says which instance polls, or "no baton running".
@@ -223,6 +273,7 @@ renamed or signed in, and when you ask (`r` in the menu, or `baton usage --refre
 ~/.baton/history/                 append-only readings and events (moves, refusals, sessions)
 ~/.baton/install.json, backups/   what baton install did, and backups of two-way copies
 ~/.baton/copies.json, conflicts.json   what was last copied into each profile, and copy conflicts
+~/.baton/sync.json                what the accounts agree on, what Baton last saw in each, open questions
 ```
 
 </details>
@@ -245,15 +296,19 @@ shows. Baton is provided as is, without warranty.
 ## Development
 
 ```sh
-npm run check   # syntax
-npm run lint    # prettier
-npm test        # deterministic: a fake claude, temporary homes under .cache/, no model calls
-npm run demo    # interactive UI preview with fixture accounts; no real profiles or sign-ins
+cargo test --workspace                                   # deterministic: a fake claude, temporary homes, no model calls
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --check
+cargo xtask lock-age                                     # every crate in Cargo.lock is at least 14 days old
+cargo deny check                                         # advisories, licences, duplicates and sources
+cargo run -p baton-tui --example menu_demo               # the menu on fixture accounts; no real profiles or sign-ins
 ```
 
-The runtime dependencies are pinned exactly: Ink and React for the menu, and the Claude Agent SDK 0.3.296 for the
-usage check. The repository's `.npmrc` keeps npm from downloading the SDK's bundled Claude Code binaries; Baton runs
-your installed `claude`.
+The workspace is a handful of crates under `crates/`: `core` (accounts, policy, usage, sessions and the text
+layout), `profile` (the profiles and their shared files), `claude` (running Claude Code and the usage check),
+`install` (the hooks, the status line and the Ferry registration), `tui` (the menu) and `cli` (the `baton`
+command). Every dependency is pinned exactly in the root `Cargo.toml`. The usage check speaks Claude Code's own
+stream-json protocol to your installed `claude`; nothing of Claude Code is bundled.
 
 ## License and security
 

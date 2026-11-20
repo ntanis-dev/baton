@@ -1,0 +1,34 @@
+[package]
+name = "baton"
+description = "Baton: one person's Claude Code accounts, used one after another."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "baton"
+path = "src/lib.rs"
+
+[[bin]]
+name = "baton"
+path = "src/main.rs"
+
+[dependencies]
+baton-claude = { workspace = true }
+baton-core = { workspace = true }
+baton-install = { workspace = true }
+baton-profile = { workspace = true }
+baton-tui = { workspace = true }
+crossterm = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+baton-testkit = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

@@ -143,6 +143,7 @@ const ITEM_LABEL = {
   hooks: "Hooks",
   hop: "/hop command",
   ferry: "Ferry",
+  agent: "Ferry's agent",
 };
 const WORDS = {
   add: ["added", "will add"],
@@ -158,6 +159,16 @@ const FERRY_WORDS = {
   ...WORDS,
   add: ["registered", "will register"],
   absent: ["not registered", "not registered"],
+};
+// The agent Ferry opens with `c` is set, kept or put back, not installed.
+const AGENT_WORDS = {
+  ...WORDS,
+  set: ["now Baton", "will be Baton"],
+  same: ["Baton", "Baton"],
+  keep: ["left alone", "left alone"],
+  restore: ["put back", "will put back"],
+  absent: ["not Baton", "not Baton"],
+  skip: ["not changed", "not changed"],
 };
 // When Ferry is not on this machine, the plan says so in one line.
 const FERRY_MISSING =
@@ -176,13 +187,28 @@ function itemDetail(item, mode, home) {
       return "baton statusline";
     case "hooks":
       return item.events.join(" · ");
+    case "agent":
+      switch (item.action) {
+        case "set":
+          return `was ${item.previous}`;
+        case "same":
+          return "c opens Baton";
+        case "keep":
+          return `${item.current}, as you chose`;
+        case "restore":
+          return item.previous;
+        case "skip":
+          return item.why;
+        default:
+          return "";
+      }
     default:
       return tildify(item.path, home);
   }
 }
 
 // The pieces in the order they are listed.
-const ITEM_ORDER = ["statusline", "hooks", "hop", "ferry"];
+const ITEM_ORDER = ["statusline", "hooks", "hop", "ferry", "agent"];
 
 function countDiff(diff) {
   let added = 0;
@@ -219,7 +245,9 @@ export function planScreen(
       );
       continue;
     }
-    const changing = ["add", "update", "remove"].includes(item.action);
+    const changing = ["add", "update", "remove", "set", "restore"].includes(
+      item.action,
+    );
     const mark = !changing
       ? item.action === "same"
         ? m.same
@@ -227,9 +255,13 @@ export function planScreen(
       : dryRun
         ? [s(g.arrow, "accent bold")]
         : m.done;
-    const word = (item.name === "ferry" ? FERRY_WORDS : WORDS)[item.action][
-      dryRun ? 1 : 0
-    ];
+    const words =
+      item.name === "ferry"
+        ? FERRY_WORDS
+        : item.name === "agent"
+          ? AGENT_WORDS
+          : WORDS;
+    const word = words[item.action][dryRun ? 1 : 0];
     const tone = changing ? (dryRun ? "accent bold" : "ok bold") : "muted";
     lines.push(
       ...wrapLine(

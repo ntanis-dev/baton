@@ -6,13 +6,13 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "**/package-lock.json"
+      - "**/Cargo.lock"
       - "**/osv-scanner.toml"
       - ".github/workflows/osv-scanner.yml"
   push:
     branches: [main]
     paths:
-      - "**/package-lock.json"
+      - "**/Cargo.lock"
       - "**/osv-scanner.toml"
       - ".github/workflows/osv-scanner.yml"
   schedule:

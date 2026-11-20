@@ -43,7 +43,10 @@ const plan = (paths, opts = {}) =>
 
 function install(paths, opts) {
   const p = plan(paths, opts);
-  return { plan: p, applied: applyPlan(p, { paths }) };
+  return {
+    plan: p,
+    applied: applyPlan(p, { paths, env: {}, runFerry: opts?.runFerry }),
+  };
 }
 
 function uninstall(paths, env = {}) {
@@ -93,9 +96,13 @@ function launcherProblems(def, fileName) {
   )
     problems.push("description");
   if (typeof def.program !== "string" || !def.program) problems.push("program");
-  for (const key of ["args", "resumeArgs", "continueArgs"])
+  for (const key of ["args", "resumeArgs", "continueArgs", "bypassArgs"])
     if (def[key] !== undefined && !strings(def[key])) problems.push(key);
-  for (const a of [...(def.args ?? []), ...(def.continueArgs ?? [])])
+  for (const a of [
+    ...(def.args ?? []),
+    ...(def.continueArgs ?? []),
+    ...(def.bypassArgs ?? []),
+  ])
     placeholders(a, ["path", "name"]);
   for (const a of def.resumeArgs ?? [])
     placeholders(a, ["path", "name", "conversation"]);
@@ -178,6 +185,7 @@ test("install writes the launcher file in Ferry's format: node and Baton's cli.j
     args: [forward(CLI)],
     resumeArgs: ["--resume", "{conversation}"],
     continueArgs: ["--continue"],
+    bypassArgs: ["--dangerously-skip-permissions"],
     conversations: "claude-code",
     terminal: true,
     source: "baton install",
@@ -489,5 +497,182 @@ test("doctor: not installed (not a failure), not registered, current, stale, not
   assert.equal(
     check().detail,
     `${file} is not Baton's: baton install replaces it`,
+  );
+});
+
+// ---- The agent Ferry opens ---------------------------------------------------
+
+// A `ferry` on PATH, faked: answers `config agent --json` with what it was
+// told, takes `config agent <id>`, and keeps every run.
+function fakeFerry(agent) {
+  const calls = [];
+  const runFerry = (program, args) => {
+    calls.push([program, ...args]);
+    const [command, key, value] = args;
+    if (command !== "config" || key !== "agent")
+      return { status: 2, stdout: "", stderr: "unknown" };
+    if (value === "--json")
+      return {
+        status: 0,
+        stdout: JSON.stringify({ key: "agent", ...agent }) + "\n",
+        stderr: "",
+      };
+    agent = { value, default: value === "default" };
+    return { status: 0, stdout: "", stderr: "" };
+  };
+  return { calls, runFerry, current: () => agent };
+}
+const FERRY_EXE = "C:/tools/ferry/ferry.exe";
+const onPath = () => FERRY_EXE;
+const agentItems = (p) => p.items.filter((i) => i.name === "agent");
+const uninstallWith = (paths, opts) => {
+  const p = planUninstall({ paths, env: {}, ...opts });
+  return { plan: p, applied: applyPlan(p, { paths, env: {}, ...opts }) };
+};
+
+test("install makes Baton the agent Ferry opens when that was Ferry's default; uninstall puts the default back", async (t) => {
+  const { home, paths } = ferryHome(t);
+  const ferry = fakeFerry({ value: "default", default: true });
+  const with_ = { findFerry: onPath, runFerry: ferry.runFerry };
+  // Planning only asks; a dry run says what will be.
+  const dry = plan(paths, with_);
+  assert.deepEqual(agentItems(dry), [
+    { name: "agent", action: "set", previous: "default" },
+  ]);
+  assert.deepEqual(ferry.calls, [[FERRY_EXE, "config", "agent", "--json"]]);
+  const shown = await main(["install", "--dry-run"], {
+    env: testEnv(home),
+    stdout: new Collect(),
+    stderr: new Collect(),
+    ...with_,
+  });
+  assert.equal(shown, 0);
+  assert.equal(ferry.current().value, "default");
+
+  const { applied } = install(paths, with_);
+  assert.ok(applied.changed);
+  assert.deepEqual(ferry.calls.at(-1), [FERRY_EXE, "config", "agent", "baton"]);
+  assert.equal(ferry.current().value, "baton");
+  assert.equal(json(paths.install).previousAgent, "default");
+  // Again: nothing to do, and the record keeps what was before Baton.
+  const again = install(paths, with_);
+  assert.equal(again.applied.changed, false);
+  assert.deepEqual(agentItems(again.plan), [{ name: "agent", action: "same" }]);
+  assert.equal(json(paths.install).previousAgent, "default");
+
+  const un = uninstallWith(paths, with_);
+  assert.deepEqual(agentItems(un.plan), [
+    { name: "agent", action: "restore", previous: "default" },
+  ]);
+  assert.deepEqual(ferry.calls.at(-1), [
+    FERRY_EXE,
+    "config",
+    "agent",
+    "default",
+  ]);
+  assert.equal(ferry.current().default, true);
+});
+
+test("Ferry's built-in Claude Code gives way to Baton and comes back; a launcher chosen on purpose stays", (t) => {
+  const { paths } = ferryHome(t);
+  const claude = fakeFerry({ value: "claude", default: false });
+  const asClaude = { findFerry: onPath, runFerry: claude.runFerry };
+  install(paths, asClaude);
+  assert.equal(claude.current().value, "baton");
+  assert.equal(json(paths.install).previousAgent, "claude");
+  uninstallWith(paths, asClaude);
+  assert.deepEqual(claude.current(), { value: "claude", default: false });
+
+  const gemini = fakeFerry({ value: "gemini", default: false });
+  const asGemini = { findFerry: onPath, runFerry: gemini.runFerry };
+  const { plan: p } = install(paths, asGemini);
+  assert.deepEqual(agentItems(p), [
+    { name: "agent", action: "keep", current: "gemini" },
+  ]);
+  assert.ok(p.notes.some((n) => n.includes("ferry config agent baton")));
+  assert.equal(gemini.current().value, "gemini");
+  assert.equal(json(paths.install).previousAgent, undefined);
+  // Nothing of Baton's to put back.
+  assert.deepEqual(agentItems(uninstallWith(paths, asGemini).plan), []);
+});
+
+test("the agent Ferry opens is changed by someone else: uninstall leaves it", (t) => {
+  const { paths } = ferryHome(t);
+  const ferry = fakeFerry({ value: "default", default: true });
+  const with_ = { findFerry: onPath, runFerry: ferry.runFerry };
+  install(paths, with_);
+  ferry.runFerry(FERRY_EXE, ["config", "agent", "gemini"]);
+  const { plan: p } = uninstallWith(paths, with_);
+  assert.deepEqual(agentItems(p), [{ name: "agent", action: "absent" }]);
+  assert.equal(ferry.current().value, "gemini");
+});
+
+test("without ferry on PATH, or when it does not answer, the agent is left for the user", (t) => {
+  const { paths } = ferryHome(t);
+  assert.deepEqual(agentItems(plan(paths)), [
+    { name: "agent", action: "skip", why: "ferry is not on PATH" },
+  ]);
+  const mute = () => ({ status: 1, stdout: "", stderr: "no" });
+  assert.deepEqual(
+    agentItems(plan(paths, { findFerry: onPath, runFerry: mute })),
+    [
+      {
+        name: "agent",
+        action: "skip",
+        why: "ferry config agent did not answer",
+      },
+    ],
+  );
+  // A `ferry config agent baton` that fails is a note, and the rest is done.
+  const ferry = fakeFerry({ value: "default", default: true });
+  const failing = (program, args) =>
+    args[2] === "baton"
+      ? { status: 1, stdout: "", stderr: "the store is locked" }
+      : ferry.runFerry(program, args);
+  const { plan: p, applied } = install(paths, {
+    findFerry: onPath,
+    runFerry: failing,
+  });
+  assert.ok(applied.changed);
+  assert.deepEqual(agentItems(p), [
+    { name: "agent", action: "failed", previous: "default" },
+  ]);
+  assert.ok(p.notes.some((n) => n.includes("the store is locked")));
+  assert.ok(existsSync(paths.install));
+});
+
+test("doctor: whether c opens Baton in Ferry", (t) => {
+  const { home, root, paths } = ferryHome(t);
+  const stub = join(root, "claude-stub.js");
+  write(stub, 'if(process.argv[2]==="--version")console.log("2.1.302");');
+  write(paths.config, { version: 1, accounts: [], claudePath: stub });
+  const check = (runFerry, findFerry = onPath) =>
+    runDoctor({
+      paths,
+      env: testEnv(home),
+      auth: false,
+      cliPath: CLI,
+      findFerry,
+      runFerry,
+    }).checks.find((c) => c.name === "Ferry's agent");
+  assert.deepEqual(
+    check(fakeFerry({ value: "baton", default: false }).runFerry),
+    {
+      name: "Ferry's agent",
+      ok: true,
+      detail: "Baton: c opens it",
+    },
+  );
+  assert.deepEqual(
+    check(fakeFerry({ value: "default", default: true }).runFerry),
+    {
+      name: "Ferry's agent",
+      ok: null,
+      detail: "default: ferry config agent baton makes it Baton",
+    },
+  );
+  assert.equal(
+    check(undefined, noPath).detail,
+    "not checked: ferry is not on PATH",
   );
 });

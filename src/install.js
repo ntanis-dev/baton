@@ -17,13 +17,17 @@ import {
 import { HOOK_EVENTS } from "./hooks.js";
 import { forward, samePath } from "./paths.js";
 import {
+  LAUNCHER_ID,
   PRIVATE,
   detectFerry,
+  ferryAgent,
   isBatonLauncher,
   launcherPath,
   launcherText,
   parseLauncher,
   ferryHome,
+  setFerryAgent,
+  takesOver,
 } from "./ferry.js";
 
 // `baton install` / `baton uninstall`: the only changes Baton makes to account
@@ -187,9 +191,10 @@ function sameBatonHooks(hooks, desired) {
 }
 
 // planInstall -> { files: [{ path, before, after, diff, backupName }], items,
-// record, notes } (items: what each piece comes to, { name: hooks |
-// statusline | hop | ferry, action }). env, platform and findFerry find
-// Ferry (ferry.js).
+// record, notes, agent } (items: what each piece comes to, { name: hooks |
+// statusline | hop | ferry | agent, action }; agent: the `ferry config agent`
+// to run, { program, id }, or null). env, platform and findFerry find Ferry,
+// and runFerry runs it (ferry.js).
 export function planInstall({
   paths,
   nodePath = process.execPath,
@@ -197,6 +202,7 @@ export function planInstall({
   env = process.env,
   platform = process.platform,
   findFerry,
+  runFerry,
 }) {
   const file = settingsPath(paths);
   const { text, value } = readSettings(file);
@@ -313,10 +319,45 @@ export function planInstall({
     }
   }
 
+  // The agent Ferry opens with `c`: Baton, once it is registered, unless a
+  // launcher was chosen on purpose. Through Ferry's own CLI, in applyPlan;
+  // the record keeps what it was, for uninstall, while it is Baton's doing.
+  let agent = null;
+  let previousAgent = record?.previousAgent;
+  if (launcher) {
+    const current = ferry.cli ? ferryAgent(ferry.cli, { env, runFerry }) : null;
+    if (!ferry.cli)
+      items.push({
+        name: "agent",
+        action: "skip",
+        why: "ferry is not on PATH",
+      });
+    else if (!current)
+      items.push({
+        name: "agent",
+        action: "skip",
+        why: "ferry config agent did not answer",
+      });
+    else if (current.value === LAUNCHER_ID)
+      items.push({ name: "agent", action: "same" });
+    else if (takesOver(current)) {
+      previousAgent = current.default ? "default" : current.value;
+      agent = { program: ferry.cli, id: LAUNCHER_ID };
+      items.push({ name: "agent", action: "set", previous: previousAgent });
+    } else {
+      previousAgent = undefined;
+      items.push({ name: "agent", action: "keep", current: current.value });
+      notes.push(
+        `Ferry opens ${current.value} with c, as you chose; ferry config agent baton makes it Baton.`,
+      );
+    }
+  }
+
   return {
     files,
     notes,
     items,
+    agent,
     record: {
       version: 1,
       cli: forward(cliPath),
@@ -326,11 +367,18 @@ export function planInstall({
       previousStatusLine,
       hooks: Object.keys(desiredHooks),
       ...(launcher ? { launcher } : {}),
+      ...(previousAgent !== undefined ? { previousAgent } : {}),
     },
   };
 }
 
-export function planUninstall({ paths, env = process.env }) {
+export function planUninstall({
+  paths,
+  env = process.env,
+  platform = process.platform,
+  findFerry,
+  runFerry,
+}) {
   const file = settingsPath(paths);
   const { text, value } = readSettings(file);
   const record = readJson(paths.install);
@@ -417,7 +465,31 @@ export function planUninstall({ paths, env = process.env }) {
   }
   if (!listed && existsSync(data))
     items.push({ name: "ferry", action: "absent" });
-  return { files, notes, items, record: null };
+  // The agent Ferry opens goes back to what it was before Baton took its
+  // place, while it is still Baton.
+  let agent = null;
+  if (record?.previousAgent !== undefined) {
+    const ferry = detectFerry({ paths, env, platform, findFerry });
+    const current = ferry.cli ? ferryAgent(ferry.cli, { env, runFerry }) : null;
+    if (!ferry.cli) {
+      items.push({
+        name: "agent",
+        action: "skip",
+        why: "ferry is not on PATH",
+      });
+      notes.push(
+        `Ferry may still open Baton with c: ferry config agent ${record.previousAgent} puts the one before back.`,
+      );
+    } else if (current?.value === LAUNCHER_ID) {
+      agent = { program: ferry.cli, id: record.previousAgent };
+      items.push({
+        name: "agent",
+        action: "restore",
+        previous: record.previousAgent,
+      });
+    } else items.push({ name: "agent", action: "absent" });
+  }
+  return { files, notes, items, record: null, agent };
 }
 
 const recordKey = (r) =>
@@ -427,6 +499,7 @@ export function planIsNoop(plan, paths) {
   const existing = readJson(paths.install);
   return (
     !plan.files.length &&
+    !plan.agent &&
     (plan.record ? recordKey(existing) === recordKey(plan.record) : !existing)
   );
 }
@@ -445,9 +518,13 @@ function attempt(what, file, work) {
 // write that fails after settings.json; then each file atomically (through a
 // symbolic link to its target); and an uninstall's record goes last, for the
 // same reason. Ferry's launcher that cannot be written or removed is a
-// note on the plan (its item says it failed), and the rest goes on. Returns
-// the backup folder.
-export function applyPlan(plan, { paths, now = Date.now() }) {
+// note on the plan (its item says it failed), and the rest goes on; so is
+// `ferry config agent`, run last, once the launcher is there for Ferry to
+// find. Returns the backup folder.
+export function applyPlan(
+  plan,
+  { paths, now = Date.now(), env = process.env, runFerry },
+) {
   if (planIsNoop(plan, paths)) return { changed: false, backup: null };
   const stamp = iso(now).replace(/[:.]/g, "-");
   let backup = null;
@@ -490,6 +567,20 @@ export function applyPlan(plan, { paths, now = Date.now() }) {
       for (const item of plan.items)
         if (item.name === "ferry" && item.path === f.path)
           item.action = "failed";
+    }
+  }
+  if (plan.agent) {
+    const result = setFerryAgent(plan.agent.program, plan.agent.id, {
+      env,
+      runFerry,
+    });
+    if (result.status !== 0) {
+      const said = result.stderr.trim();
+      plan.notes.push(
+        `ferry config agent ${plan.agent.id} failed${said ? `: ${said}` : ""}. The rest is done; run it yourself to ${plan.record ? "make Baton the agent Ferry opens" : "put the agent Ferry opens back"}.`,
+      );
+      for (const item of plan.items)
+        if (item.name === "agent") item.action = "failed";
     }
   }
   if (!plan.record)

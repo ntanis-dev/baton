@@ -1302,7 +1302,7 @@ impl Lead {
             to: from.to_owned(),
             from: from.to_owned(),
             reason: "stay",
-            prompt: Some(limited.then(|| stay_prompt(&name, window, until, now))),
+            prompt: Some(limited.then(|| stay_prompt(window, until, now))),
             window,
             until,
         })
@@ -1336,14 +1336,7 @@ impl Lead {
             .unwrap_or_else(|| self.cwd.clone());
         let prompt = match &next.prompt {
             Some(prompt) => prompt.clone(),
-            None => Some(continue_prompt(
-                &self.label(&next.from),
-                &self.label(&next.to),
-                next.reason,
-                next.window,
-                next.until,
-                self.time(),
-            )),
+            None => Some(continue_prompt(next.reason, next.window, next.until, self.time())),
         };
         let seen = Live {
             model: live.word("model").map(str::to_owned),

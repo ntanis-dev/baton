@@ -277,7 +277,7 @@ pub fn apply_op(paths: &Paths, env: &Env, now: Ms, op: &Op) -> Result<Done, Stri
                 by: "menu",
                 now,
             };
-            let moved = hop(paths, &request).map_err(|error| error.0)?;
+            let moved = hop(paths, &request).map_err(|error| error.message)?;
             let short: String = moved.session.chars().take(8).collect();
             let when = if moved.between {
                 "now"

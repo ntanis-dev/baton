@@ -1,5 +1,9 @@
 //! The words Baton uses: the first prompt of a resumed conversation and the one-line notices. Pure;
 //! times are formatted in local time.
+//!
+//! The notices are the operator's, on the terminal, and name the accounts. The prompts are read by the
+//! model and name none: which accounts the operator has, and what they are called, is not the model's
+//! to know.
 
 use crate::clock::{Ms, local, same_local_day};
 use crate::window::Limit;
@@ -62,7 +66,11 @@ fn resets(until: Option<Ms>, now: Ms) -> String {
     }
 }
 
-/// Why the conversation moved, in one clause.
+/// The account a conversation ran on, for the model: no name.
+const RAN_ON: &str = "the account it ran on";
+
+/// Why the conversation moved, in one clause. `from` is the account it ran on, as the reader may
+/// know it: its name for the operator, no name for the model.
 pub fn hop_reason(reason: &str, from: &str, window: Option<Limit>, until: Option<Ms>, now: Ms) -> String {
     match reason {
         "refusal" => format!("{from} reached its {}{}", limit_name(window), resets(until, now)),
@@ -86,19 +94,12 @@ pub fn hop_reason(reason: &str, from: &str, window: Option<Limit>, until: Option
     }
 }
 
-/// The first prompt of a conversation resumed on another account.
-pub fn continue_prompt(
-    from: &str,
-    to: &str,
-    reason: &str,
-    window: Option<Limit>,
-    until: Option<Ms>,
-    now: Ms,
-) -> String {
+/// The first prompt of a conversation resumed on another account. It names neither account.
+pub fn continue_prompt(reason: &str, window: Option<Limit>, until: Option<Ms>, now: Ms) -> String {
     [
         format!(
-            "[Baton] This conversation was moved from account {from} to account {to} because {}.",
-            hop_reason(reason, from, window, until, now)
+            "[Baton] This conversation was moved to another account because {}.",
+            hop_reason(reason, RAN_ON, window, until, now)
         ),
         "Carry on exactly where you stopped.".to_owned(),
         "If a workflow run was interrupted, relaunch it the same way (with resumeFromRunId, or the same script) so its finished agents replay from their saved results instead of running again.".to_owned(),
@@ -108,11 +109,11 @@ pub fn continue_prompt(
 }
 
 /// When the operator chose to stay on a limited account: the prompt meets the limit and Claude Code's
-/// own wait-at-limit takes over.
-pub fn stay_prompt(account: &str, window: Option<Limit>, until: Option<Ms>, now: Ms) -> String {
+/// own wait-at-limit takes over. It does not name the account.
+pub fn stay_prompt(window: Option<Limit>, until: Option<Ms>, now: Ms) -> String {
     [
         format!(
-            "[Baton] Account {account} reached its {}{}; the operator chose to stay on it instead of moving the conversation.",
+            "[Baton] The account this conversation runs on reached its {}{}; the operator chose to stay on it instead of moving the conversation.",
             limit_name(window),
             resets(until, now)
         ),
@@ -217,14 +218,31 @@ mod tests {
     #[test]
     fn prompts_and_notices() {
         let noon = local_ms(2026, 3, 10, 12, 0).unwrap();
-        let prompt = continue_prompt("Work", "Spare", "manual", None, None, noon);
+        let prompt = continue_prompt("manual", None, None, noon);
         assert!(prompt.starts_with(
-            "[Baton] This conversation was moved from account Work to account Spare because the operator asked for it. Carry on exactly where you stopped."
+            "[Baton] This conversation was moved to another account because the operator asked for it. Carry on exactly where you stopped."
         ));
         assert!(prompt.contains("resumeFromRunId"));
+        // What the model reads says why, and names no account.
+        let first = |reason: &str, window: Option<Limit>, until: Option<Ms>| {
+            let prompt = continue_prompt(reason, window, until, noon);
+            prompt.split_once(". ").unwrap().0.to_owned()
+        };
         assert_eq!(
-            stay_prompt("Work", Some(Limit::FiveHour), Some(noon + HOUR), noon),
-            "[Baton] Account Work reached its 5-hour limit (resets 13:00); the operator chose to stay on it instead of moving the conversation. Carry on exactly where you stopped once the limit allows."
+            first("refusal", Some(Limit::FiveHour), Some(noon + HOUR)),
+            "[Baton] This conversation was moved to another account because the account it ran on reached its 5-hour limit (resets 13:00)"
+        );
+        assert_eq!(
+            first("planned", Some(Limit::SevenDay), None),
+            "[Baton] This conversation was moved to another account because the account it ran on was about to reach its weekly limit (planned move between turns)"
+        );
+        assert_eq!(
+            first("compaction", None, None),
+            "[Baton] This conversation was moved to another account because the conversation was just compacted and the account it ran on is close to its limits (rebalance)"
+        );
+        assert_eq!(
+            stay_prompt(Some(Limit::FiveHour), Some(noon + HOUR), noon),
+            "[Baton] The account this conversation runs on reached its 5-hour limit (resets 13:00); the operator chose to stay on it instead of moving the conversation. Carry on exactly where you stopped once the limit allows."
         );
         assert_eq!(
             hop_line("Work", "Spare", "manual", None, None, noon, None),

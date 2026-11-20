@@ -396,8 +396,12 @@ fn automatic_hop_a_refusal_ends_claude_at_the_turn_end_and_resumes_the_conversat
     );
     let prompt = prompt_of(second);
     assert!(
-        prompt.contains("moved from account acct1 to account acct2 because acct1 reached its 5-hour limit"),
+        prompt.contains("moved to another account because the account it ran on reached its 5-hour limit"),
         "{prompt}"
+    );
+    assert!(
+        !prompt.contains("acct"),
+        "the model is not told the accounts: {prompt}"
     );
     assert!(prompt.contains("resumeFromRunId"));
     let output = run.output.text();
@@ -440,7 +444,12 @@ fn stay_a_key_during_the_countdown_keeps_the_conversation_on_its_account_and_let
         json!(run.profile("acct1")),
         "stayed on acct1"
     );
-    assert!(prompt_of(&invocations[1]).contains("chose to stay on it"));
+    let prompt = prompt_of(&invocations[1]);
+    assert!(prompt.contains("chose to stay on it"), "{prompt}");
+    assert!(
+        !prompt.contains("acct"),
+        "the model is not told the accounts: {prompt}"
+    );
     assert!(run.output.text().contains("staying on acct1"));
     assert!(run.hops().is_empty());
 }
@@ -551,9 +560,10 @@ fn manual_hop_with_slash_hop_the_request_waits_for_the_end_of_the_turn() {
         .unwrap();
     assert_eq!(hop["code"], 0);
     let said = hop["stdout"].as_str().unwrap();
-    assert!(
-        said.contains("moves from acct1 to acct2 when this turn ends"),
-        "{said}"
+    // What /hop hands to the model names no account.
+    assert_eq!(
+        said.trim(),
+        "Baton: this conversation moves to another account when this turn ends."
     );
     // The request came in during the turn; the hop was decided on its Stop.
     let ends: Vec<&Value> = lead
@@ -600,7 +610,7 @@ fn hops_in_a_row_go_on_to_the_next_account_not_back_to_the_one_just_left() {
         [["acct1", "acct2", "manual"], ["acct2", "acct3", "manual"]]
     );
     assert_eq!(run.invocations()[2]["configDir"], json!(run.profile("acct3")));
-    // `baton hop` said where the conversation would go, both times.
+    // /hop accepted both times.
     let said: Vec<String> = run
         .steps()
         .iter()
@@ -608,8 +618,9 @@ fn hops_in_a_row_go_on_to_the_next_account_not_back_to_the_one_just_left() {
         .map(|step| step["stdout"].as_str().unwrap().to_owned())
         .collect();
     assert_eq!(said.len(), 2);
-    assert!(said[0].contains("moves from acct1 to acct2"), "{}", said[0]);
-    assert!(said[1].contains("moves from acct2 to acct3"), "{}", said[1]);
+    for said in &said {
+        assert!(said.contains("moves to another account"), "{said}");
+    }
     let left: Vec<&Value> = lead
         .events()
         .iter()

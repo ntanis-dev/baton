@@ -292,7 +292,7 @@ fn renamed_to_an_email_while_a_session_runs_its_hooks_land_on_the_same_account_a
         100
     );
     assert!(paths.rejected.join("acct2.five_hour.json").exists());
-    // What the operator and Claude read uses the new name, as typed.
+    // What the operator reads uses the new name, as typed.
     let moved = said.lines().any(|line| {
         line.split_once("jane.work+baton@example.com reached its 5-hour limit ")
             .is_some_and(|(_, rest)| rest.contains(" moving this conversation to acct1"))
@@ -306,19 +306,15 @@ fn renamed_to_an_email_while_a_session_runs_its_hooks_land_on_the_same_account_a
     let argv = |n: usize| invocations[n]["argv"].as_array().unwrap().clone();
     let prompt = argv(1).last().and_then(Value::as_str).unwrap().to_owned();
     assert!(
-        prompt.contains("moved from account jane.work+baton@example.com to account acct1"),
+        prompt.contains("moved to another account because the account it ran on reached its 5-hour limit"),
         "{prompt}"
     );
-    // Folders, the environment and the arguments carry ids only (the continue prompt, text for the
-    // model, says the name).
-    for (n, invocation) in invocations.iter().enumerate() {
-        let mut shown = invocation.clone();
-        let mut args = argv(n);
-        args.pop();
-        shown["argv"] = Value::Array(args);
+    // Nothing Claude Code is started with says the name: folders and the environment carry ids
+    // only, and the continue prompt, text for the model, names no account.
+    for invocation in &invocations {
         assert!(
-            !shown.to_string().contains(EMAIL),
-            "no name in arguments or folders: {shown}"
+            !invocation.to_string().contains(EMAIL),
+            "no name in arguments, folders or the prompt: {invocation}"
         );
     }
     let stats = baton(&home, &["stats", "--json"]).json();

@@ -211,20 +211,21 @@ fn run_hop(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
             } else {
                 "when this turn ends"
             };
-            // The /hop command's answer goes to the model, and a script reads the same: plain words; a
-            // terminal gets the screen.
+            // The /hop command's answer goes to the model: plain words that name no account.
+            if from_command {
+                return Ok(Outcome {
+                    text: Some(format!(
+                        "Baton: this conversation moves to another account {when}."
+                    )),
+                    ..Outcome::default()
+                });
+            }
+            // A script reads plain words too; a terminal gets the screen.
             let words = format!(
                 "Baton: conversation {} moves from {} to {} {when}.",
                 done.session, done.from, done.to
             );
             let data = data(&done);
-            if from_command {
-                return Ok(Outcome {
-                    data,
-                    text: Some(words),
-                    ..Outcome::default()
-                });
-            }
             Ok(Outcome {
                 data,
                 text: Some(words.clone()),
@@ -236,17 +237,17 @@ fn run_hop(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
             })
         }
         Err(error) => {
-            // The /hop command shows Baton's answer to the model; it is not a failure there.
-            let message = error.0;
-            let data = Some(json!({ "error": message }));
-            let text = Some(format!("Baton: {message}"));
+            // The /hop command shows Baton's answer to the model: it is not a failure there, and it
+            // names no account.
             if from_command {
                 return Ok(Outcome {
-                    data,
-                    text,
+                    text: Some(format!("Baton: {}", error.unnamed())),
                     ..Outcome::default()
                 });
             }
+            let message = error.message;
+            let data = Some(json!({ "error": message }));
+            let text = Some(format!("Baton: {message}"));
             Ok(Outcome {
                 data,
                 text,

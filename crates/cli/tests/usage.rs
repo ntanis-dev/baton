@@ -201,11 +201,13 @@ fn stats_usage_per_day_refusals_hops_sessions_and_weekly_allowance_left_at_a_res
         HOUR,
         json!({ "at": at(HOUR), "type": "refusal", "account": "acct1", "window": "five_hour" }),
     );
+    // The hop too is on today's row, whatever the hour.
+    let hopped = 3_500_000.min(now - midnight);
     append(
         "events",
-        3_500_000,
+        hopped,
         json!({
-            "at": at(3_500_000), "type": "hop", "session": "s",
+            "at": at(hopped), "type": "hop", "session": "s",
             "from": "acct1", "to": "acct2", "reason": "refusal",
         }),
     );

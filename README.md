@@ -86,7 +86,8 @@ Baton watches each turn end and decides what to do:
 - **An account hit its limit.** If it is the 5-hour limit and it resets within 20 minutes, Claude Code waits in
   place. Otherwise Baton closes `claude`, prints one line saying which account reached what and where the
   conversation goes next, and counts down 10 seconds. Enter goes now, any other key stays, Ctrl+C quits. Then the same
-  conversation resumes on the next account, with a note telling Claude it was moved and why.
+  conversation resumes on the next account, with a note telling Claude it was moved and why. The note names no
+  account.
 - **An account is about to run out.** Baton estimates what a turn costs and moves between turns when the next one would
   not fit, so you never meet a refusal halfway through. It never moves while subagents or a workflow are running.
 - **After a compaction**, the context is small and moving is cheap, so Baton rebalances if the account would run out
@@ -160,6 +161,9 @@ Set `NO_COLOR` to drop the colors, `BATON_GLYPHS=plain` for the classic Windows 
   in `~/.baton/accounts/<id>`. Its hooks and status line do nothing in plain `claude`.
 - **The status line, hooks and `/hop` reach `~/.claude` only through `baton install`**, which shows what it will do,
   keeps a backup, and is undone by `baton uninstall`.
+- **Claude is not told your accounts.** The note it gets after a move and the answer `/hop` gives it say what
+  happened and why, never which account. The names are on your terminal, in Baton's own lines. One thing Baton cannot
+  hide: the profile folder Claude Code runs in is `~/.baton/accounts/<id>`, and the id is made from the name.
 
 `baton install` adds three things to `~/.claude`:
 

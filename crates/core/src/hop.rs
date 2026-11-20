@@ -23,14 +23,43 @@ use crate::state::{Want, load_snapshot};
 
 /// Why a conversation cannot be moved.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
-#[error("{0}")]
-pub struct HopError(pub String);
+#[error("{message}")]
+pub struct HopError {
+    /// Why, for the operator: it may name an account.
+    pub message: String,
+    /// The same with no account's name, when `message` has one.
+    unnamed: Option<String>,
+}
+
+impl HopError {
+    /// A reason that names no account.
+    fn new(message: impl Into<String>) -> HopError {
+        HopError {
+            message: message.into(),
+            unnamed: None,
+        }
+    }
+
+    /// A reason that names an account, and the same without the name.
+    fn naming(message: impl Into<String>, unnamed: &str) -> HopError {
+        HopError {
+            message: message.into(),
+            unnamed: Some(unnamed.to_owned()),
+        }
+    }
+
+    /// Why, for the model (the /hop command hands Baton's answer to it): no account's name, but for
+    /// one the operator typed after /hop.
+    pub fn unnamed(&self) -> &str {
+        self.unnamed.as_deref().unwrap_or(&self.message)
+    }
+}
 
 /// The session a hop is about.
 pub fn resolve_session(paths: &Paths, session: Option<&str>, env: &Env) -> Result<String, HopError> {
     if let Some(session) = session.filter(|s| !s.is_empty()) {
         if !valid_id(session) {
-            return Err(HopError(format!("Not a session id: {session}")));
+            return Err(HopError::new(format!("Not a session id: {session}")));
         }
         return Ok(session.to_owned());
     }
@@ -56,10 +85,10 @@ pub fn resolve_session(paths: &Paths, session: Option<&str>, env: &Env) -> Resul
         .collect();
     match running.as_slice() {
         [only] => Ok(only.clone()),
-        [] => Err(HopError(
-            "/hop and baton hop only work in sessions started with baton, and none is running.".to_owned(),
+        [] => Err(HopError::new(
+            "/hop and baton hop only work in sessions started with baton, and none is running.",
         )),
-        several => Err(HopError(format!(
+        several => Err(HopError::new(format!(
             "Several conversations run under baton; name one: {}",
             several.join(", ")
         ))),
@@ -109,7 +138,7 @@ pub struct HopRequest<'a> {
 pub fn hop(paths: &Paths, request: &HopRequest<'_>) -> Result<Hop, HopError> {
     let id = resolve_session(paths, request.session, request.env)?;
     let Some(holder) = lock_holder(paths, &id) else {
-        return Err(HopError(format!(
+        return Err(HopError::new(format!(
             "/hop and baton hop only work in sessions started with baton; this conversation ({id}) was not, so Baton leaves it alone."
         )));
     };
@@ -127,15 +156,15 @@ pub fn hop(paths: &Paths, request: &HopRequest<'_>) -> Result<Hop, HopError> {
     let mut target = None;
     if let Some(to) = request.to.filter(|to| !to.is_empty()) {
         let Some(account) = find_account(&snapshot.config, to, request.to_by) else {
-            return Err(HopError(format!("No account named {to}.")));
+            return Err(HopError::new(format!("No account named {to}.")));
         };
         target = Some(account.id.clone());
     }
     if target.as_deref() == Some(from.as_str()) {
-        return Err(HopError(format!(
-            "The conversation already runs on {}.",
-            label(&from)
-        )));
+        return Err(HopError::naming(
+            format!("The conversation already runs on {}.", label(&from)),
+            "The conversation already runs on that account.",
+        ));
     }
     let predicted = target.clone().or_else(|| {
         let model =
@@ -153,13 +182,16 @@ pub fn hop(paths: &Paths, request: &HopRequest<'_>) -> Result<Hop, HopError> {
         pick_hop(&states, &snapshot.policy, &from, left).account
     });
     let Some(predicted) = predicted else {
-        return Err(HopError(format!(
-            "Every other account is at its limit; {id} stays on {}.",
-            label(&from)
-        )));
+        return Err(HopError::naming(
+            format!(
+                "Every other account is at its limit; {id} stays on {}.",
+                label(&from)
+            ),
+            "Every other account is at its limit; the conversation stays where it is.",
+        ));
     };
     request_hop(paths, &id, target.as_deref(), request.by, request.now)
-        .map_err(|error| HopError(format!("Could not ask for the move: {error}")))?;
+        .map_err(|error| HopError::new(format!("Could not ask for the move: {error}")))?;
     let turn = read_session_file(paths, &id, "turn.json");
     Ok(Hop {
         from: label(&from),
@@ -214,13 +246,13 @@ mod tests {
         let env = Env::new();
         assert_eq!(resolve_session(&paths, Some(ID), &env), Ok(ID.to_owned()));
         assert_eq!(
-            resolve_session(&paths, Some("no/id"), &env).unwrap_err().0,
+            resolve_session(&paths, Some("no/id"), &env).unwrap_err().message,
             "Not a session id: no/id"
         );
         assert!(
             resolve_session(&paths, None, &env)
                 .unwrap_err()
-                .0
+                .message
                 .contains("none is running")
         );
         let in_claude = Env::from_pairs([("CLAUDE_CODE_SESSION_ID", ID)]);
@@ -246,7 +278,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            resolve_session(&paths, None, &env).unwrap_err().0,
+            resolve_session(&paths, None, &env).unwrap_err().message,
             "Several conversations run under baton; name one: held, other"
         );
     }
@@ -255,7 +287,7 @@ mod tests {
     fn asking_for_a_hop() {
         let (_dir, paths) = home();
         let env = Env::new();
-        let not_ours = hop(&paths, &request(&env, Some(ID), None)).unwrap_err().0;
+        let not_ours = hop(&paths, &request(&env, Some(ID), None)).unwrap_err().message;
         assert!(
             not_ours.contains("was not, so Baton leaves it alone"),
             "{not_ours}"
@@ -292,22 +324,23 @@ mod tests {
             read_session_file(&paths, ID, "hop.json").unwrap()["to"],
             json!("spare")
         );
-        assert_eq!(
-            hop(&paths, &request(&env, Some(ID), Some("work"))).unwrap_err().0,
-            "The conversation already runs on Work."
-        );
-        assert_eq!(
-            hop(&paths, &request(&env, Some(ID), Some("nobody")))
-                .unwrap_err()
-                .0,
-            "No account named nobody."
-        );
+        // On the account it already runs on: said with its name to the operator, without to the model.
+        let same = hop(&paths, &request(&env, Some(ID), Some("work"))).unwrap_err();
+        assert_eq!(same.message, "The conversation already runs on Work.");
+        assert_eq!(same.unnamed(), "The conversation already runs on that account.");
+        // The name the operator typed is theirs to read back, wherever the answer goes.
+        let nobody = hop(&paths, &request(&env, Some(ID), Some("nobody"))).unwrap_err();
+        assert_eq!(nobody.message, "No account named nobody.");
+        assert_eq!(nobody.unnamed(), "No account named nobody.");
         // By id only (the menu): a name does not find it.
         let by_id = HopRequest {
             to_by: By::Id,
             ..request(&env, Some(ID), Some("Spare"))
         };
-        assert_eq!(hop(&paths, &by_id).unwrap_err().0, "No account named Spare.");
+        assert_eq!(
+            hop(&paths, &by_id).unwrap_err().message,
+            "No account named Spare."
+        );
         // The wrapper's record names the account the conversation is on now.
         write_json_atomic(
             &wrapper_file(&paths, "w1"),

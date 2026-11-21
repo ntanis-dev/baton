@@ -11,9 +11,6 @@
 //! Ferry's `bypass-permissions` setting and the `Bypass` of a running session cover Baton as they do
 //! Claude Code. The setting stays Ferry's and the operator's: Baton names the option and turns nothing
 //! on. Ferry puts the option first on the command line, and Baton hands it to claude with the rest.
-//!
-//! A launcher file written by the Node version of Baton (node + `src/cli.js`) carries the same id and
-//! source, so it is Baton's all the same: install replaces it and uninstall removes it.
 
 use std::fmt;
 use std::fs;
@@ -232,22 +229,12 @@ pub fn parse_launcher(text: &str) -> Option<Object> {
     }
 }
 
-/// Only a file Baton wrote is Baton's to remove: this version's, or the Node version's.
+/// Only a file Baton wrote is Baton's to remove.
 pub fn is_baton_launcher(value: Option<&Object>) -> bool {
     value.is_some_and(|value| {
         value.get("id").and_then(Value::as_str) == Some(LAUNCHER_ID)
             && value.get("source").and_then(Value::as_str) == Some(LAUNCHER_SOURCE)
     })
-}
-
-/// Whether a launcher file is the Node version's: it runs node with Baton's `cli.js`.
-fn is_node_launcher(value: &Object) -> bool {
-    value
-        .get("args")
-        .and_then(Value::as_array)
-        .and_then(|args| args.first())
-        .and_then(Value::as_str)
-        .is_some_and(|first| first.to_lowercase().ends_with("cli.js"))
 }
 
 /// How Baton stands with Ferry.
@@ -274,8 +261,6 @@ pub struct Registration {
     pub state: Registered,
     /// For a stale one: whether the program it runs is not this baton executable.
     pub program: bool,
-    /// For a stale one: whether the Node version of Baton wrote it.
-    pub node: bool,
 }
 
 /// How Baton stands with Ferry: `exe` is the baton executable `baton install` would register.
@@ -285,7 +270,6 @@ pub fn registration_state(paths: &Paths, env: &Env, find: Option<FindFerry<'_>>,
         ferry,
         state,
         program: false,
-        node: false,
     };
     if !ferry.found {
         return state(ferry, Registered::Absent);
@@ -304,7 +288,6 @@ pub fn registration_state(paths: &Paths, env: &Env, find: Option<FindFerry<'_>>,
         ferry,
         state: Registered::Stale,
         program: !same_path(theirs, forward(exe)),
-        node: is_node_launcher(&value),
     }
 }
 
@@ -361,13 +344,6 @@ mod tests {
         assert!(is_baton_launcher(
             parse_launcher(&launcher_text(Path::new("baton"))).as_ref()
         ));
-        // The Node version's: node and cli.js, the same id and source.
-        let node = parse_launcher(
-            r#"{"schemaVersion":1,"id":"baton","program":"C:/node.exe","args":["C:/baton/src/cli.js"],"source":"baton install"}"#,
-        )
-        .unwrap();
-        assert!(is_baton_launcher(Some(&node)));
-        assert!(is_node_launcher(&node));
         for other in [
             r#"{"id":"baton","source":"by hand"}"#,
             r#"{"id":"other","source":"baton install"}"#,

@@ -310,24 +310,6 @@ fn doctor_not_installed_which_is_no_failure_not_registered_current_stale_not_bat
         },
     );
     stale("baton's path changed");
-    // Registered by the Node version: node and Baton's cli.js.
-    write_json(
-        &file,
-        &json!({
-            "schemaVersion": 1,
-            "id": "baton",
-            "name": "Baton",
-            "description": "Claude Code on your accounts, one after another",
-            "program": "C:/Program Files/nodejs/node.exe",
-            "args": ["E:/GitHub/baton/src/cli.js"],
-            "resumeArgs": ["--resume", "{conversation}"],
-            "continueArgs": ["--continue"],
-            "conversations": "claude-code",
-            "terminal": true,
-            "source": "baton install"
-        }),
-    );
-    stale("written by the Node version of Baton");
     // This baton, in older words.
     let mut older = launcher_def(Path::new(EXE));
     older["description"] = json!("older words");

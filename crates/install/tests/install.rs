@@ -1,5 +1,5 @@
-//! `baton install` and `baton uninstall` over a temporary home: what is planned, what is written,
-//! what is kept, and that an install made by the Node version of Baton is replaced and removed.
+//! `baton install` and `baton uninstall` over a temporary home: what is planned, what is written
+//! and what is kept.
 
 #![allow(
     clippy::unwrap_used,
@@ -138,8 +138,8 @@ fn install_into_settings_without_a_status_line_or_hooks_keeping_the_other_keys()
     let backup = applied.backup.unwrap();
     assert_eq!(json_of(&backup.join("settings.json")), original);
     let state = install_state(paths);
-    assert!(state.ok && state.status_line && state.hop_command && !state.node);
-    assert!(state.hooks.iter().all(|hook| hook.installed && !hook.node));
+    assert!(state.ok && state.status_line && state.hop_command);
+    assert!(state.hooks.iter().all(|hook| hook.installed));
     assert_eq!(
         state.hooks.iter().map(|hook| hook.event).collect::<Vec<_>>(),
         EVENTS
@@ -298,146 +298,6 @@ fn settings_json_that_is_not_json_is_refused() {
     let state = install_state(paths);
     assert!(!state.ok);
     assert_eq!(state.error.as_deref(), Some("settings.json is not valid JSON"));
-}
-
-// ---- An install made by the Node version of Baton --------------------------------------------------
-
-const NODE: &str = "C:/nowhere/Program Files/nodejs/node.exe";
-const CLI: &str = "E:/nowhere/baton/src/cli.js";
-
-/// What the Node version of Baton left in a home: its hooks beside the operator's own, its status
-/// line wrapping theirs, its /hop command and its record.
-fn node_install(paths: &Paths, mine: &Value, my_stop: &Value) {
-    let node_hook = |event: &str| json!({ "hooks": [{ "type": "command", "command": NODE, "args": [CLI, "hook", event], "timeout": 10 }] });
-    write_json(
-        &settings_path(paths),
-        &json!({
-            "theme": "dark",
-            "statusLine": { "type": "command", "command": format!("node \"{CLI}\" statusline") },
-            "hooks": {
-                "Stop": [my_stop, node_hook("stop")],
-                "SessionStart": [node_hook("session-start")],
-                "UserPromptSubmit": [node_hook("prompt")],
-                "StopFailure": [node_hook("stop-failure")],
-                "SessionEnd": [node_hook("session-end")]
-            }
-        }),
-    );
-    write(
-        &hop_command_path(paths),
-        &format!(
-            "---\ndescription: Move this conversation to another account at the end of this turn {HOP_MARKER}\nargument-hint: \"[account]\"\nallowed-tools: Bash(node:*)\ndisable-model-invocation: true\n---\n!`node \"{CLI}\" hop --session \"${{CLAUDE_SESSION_ID}}\" --from-command --to='$ARGUMENTS'`\n\nBaton was asked.\n"
-        ),
-    );
-    write_json(
-        &paths.install,
-        &json!({
-            "version": 1,
-            "cli": CLI,
-            "node": NODE,
-            "settingsPath": settings_path(paths).to_string_lossy(),
-            "commandPath": hop_command_path(paths).to_string_lossy(),
-            "previousStatusLine": mine,
-            "hooks": EVENTS,
-            "installedAt": "2026-10-01T10:00:00.000Z",
-            "backup": "C:/somewhere/backups/2026-10-01T10-00-00-000Z"
-        }),
-    );
-}
-
-#[test]
-fn an_install_by_the_node_version_is_seen_and_replaced_in_place() {
-    let home = temp_home();
-    let paths = &home.paths;
-    let mine = json!({ "type": "command", "command": "~/.claude/statusline.sh" });
-    let my_stop = json!({ "hooks": [{ "type": "command", "command": "notify-send done" }] });
-    node_install(paths, &mine, &my_stop);
-    let state = install_state(paths);
-    assert!(state.ok && state.status_line && state.hop_command && state.node);
-    assert!(
-        state
-            .hooks
-            .iter()
-            .all(|hook| hook.installed && hook.node && !hook.program_exists)
-    );
-
-    let (plan, applied) = install(paths, EXE);
-    assert!(applied.changed);
-    let action = |name: &str| plan.items.iter().find(|item| item.name == name).unwrap().action;
-    assert_eq!(
-        (action("hooks"), action("statusline"), action("hop")),
-        ("update", "update", "update")
-    );
-    assert!(
-        plan.notes.iter().all(|n| n.contains("from PATH")),
-        "nothing of the operator's is touched: {:?}",
-        plan.notes
-    );
-    let s = json_of(&settings_path(paths));
-    for event in EVENTS {
-        let all = handlers(&s, event);
-        let ours: Vec<&Value> = all.iter().filter(|h| is_baton_handler(h)).collect();
-        assert_eq!(ours.len(), 1, "{event}");
-        assert_eq!(ours[0]["command"], EXE, "{event}");
-        assert_eq!(ours[0]["args"][0], "hook", "{event}");
-    }
-    assert_eq!(
-        s["hooks"]["Stop"][0], my_stop,
-        "the operator's own hook stays, and stays first"
-    );
-    assert_eq!(
-        s["statusLine"],
-        json!({ "type": "command", "command": "baton statusline" })
-    );
-    assert!(!s.to_string().contains("cli.js"));
-    let hop = read(&hop_command_path(paths));
-    assert_eq!(hop, hop_command_text(Path::new(EXE)));
-    let record = json_of(&paths.install);
-    assert_eq!(
-        record["previousStatusLine"], mine,
-        "the operator's status line is still remembered"
-    );
-    assert_eq!(record["exe"], EXE);
-    assert!(record.get("cli").is_none() && record.get("node").is_none());
-    let state = install_state(paths);
-    assert!(state.status_line && !state.node);
-    // Again: nothing to do.
-    assert!(!install(paths, EXE).1.changed);
-    // And uninstall gives the operator's own back.
-    uninstall(paths);
-    assert_eq!(
-        json_of(&settings_path(paths)),
-        json!({ "theme": "dark", "statusLine": mine, "hooks": { "Stop": [my_stop] } })
-    );
-}
-
-#[test]
-fn uninstall_removes_an_install_by_the_node_version() {
-    let home = temp_home();
-    let paths = &home.paths;
-    let mine = json!({ "type": "command", "command": "~/.claude/statusline.sh" });
-    let my_stop = json!({ "hooks": [{ "type": "command", "command": "notify-send done" }] });
-    node_install(paths, &mine, &my_stop);
-    let (plan, applied) = uninstall(paths);
-    assert!(applied.changed);
-    let item = |name: &str| plan.items.iter().find(|item| item.name == name).unwrap();
-    assert_eq!(
-        (
-            item("hooks").action,
-            item("statusline").action,
-            item("hop").action
-        ),
-        ("remove", "remove", "remove")
-    );
-    assert_eq!(item("statusline").restored, Some(true));
-    assert_eq!(
-        json_of(&settings_path(paths)),
-        json!({ "theme": "dark", "statusLine": mine, "hooks": { "Stop": [my_stop] } })
-    );
-    assert!(!hop_command_path(paths).exists());
-    assert!(!paths.install.exists());
-    let backup = applied.backup.unwrap();
-    assert!(backup.join("settings.json").exists() && backup.join("hop.md").exists());
 }
 
 #[test]

@@ -14,9 +14,6 @@
 //! removes exactly Baton's entries and puts the previous status line back. A file that cannot be
 //! written stops with an [`InstallError`], except Ferry's launcher, which lives in another tool's
 //! folder: its failure is a note.
-//!
-//! Baton was a Node program before it was this one, and its entries then ran `node` with Baton's
-//! `src/cli.js`. Those are Baton's too: install replaces them in place and uninstall removes them.
 
 use std::fs;
 use std::io;
@@ -61,14 +58,7 @@ fn hook_names() -> Vec<&'static str> {
     HOOK_EVENTS.iter().map(|(_, event)| *event).collect()
 }
 
-/// The Node version's hook handler: `node <...>/src/cli.js hook <event>`.
-static NODE_CLI: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"(?i)[\\/]src[\\/]cli\.js$").ok());
-
-/// The Node version's status line command: `node "<...>/cli.js" statusline`.
-static NODE_STATUS_LINE: LazyLock<Option<Regex>> =
-    LazyLock::new(|| Regex::new(r#"cli\.js"?\s+statusline\b"#).ok());
-
-/// This version's status line command: the baton executable, then `statusline`.
+/// Baton's status line command: the baton executable, then `statusline`.
 static OWN_STATUS_LINE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     Regex::new(r#"(?i)(?:^|[\\/"\s])baton(?:-[^\\/"\s]*)?(?:\.exe)?"?\s+statusline\b"#).ok()
 });
@@ -88,41 +78,24 @@ fn is_baton_program(program: &str) -> bool {
     name == "baton" || name.starts_with("baton-")
 }
 
-/// Whether a hook handler is the Node version's: `node <...>/src/cli.js hook <event>`.
-fn is_node_handler(handler: &Value) -> bool {
+/// Whether a hook handler in settings.json is Baton's: `<baton> hook <event>`.
+pub fn is_baton_handler(handler: &Value) -> bool {
     let Some(args) = handler.at("args").as_array() else {
         return false;
     };
-    args.len() >= 3
-        && args[1].as_str() == Some("hook")
-        && args[0]
-            .as_str()
-            .is_some_and(|cli| NODE_CLI.as_ref().is_some_and(|pattern| pattern.is_match(cli)))
-        && args[2].as_str().is_some_and(|event| hook_event(event).is_some())
-}
-
-/// Whether a hook handler is this version's: `<baton> hook <event>`.
-fn is_own_handler(handler: &Value) -> bool {
-    let Some(args) = handler.at("args").as_array() else {
-        return false;
-    };
-    args.len() >= 2
+    handler.text("type") == Some("command")
+        && args.len() >= 2
         && args[0].as_str() == Some("hook")
         && args[1].as_str().is_some_and(|event| hook_event(event).is_some())
         && handler.text("command").is_some_and(is_baton_program)
 }
 
-/// Whether a hook handler in settings.json is Baton's: this version's, or the Node version's.
-pub fn is_baton_handler(handler: &Value) -> bool {
-    handler.text("type") == Some("command") && (is_own_handler(handler) || is_node_handler(handler))
-}
-
-/// Whether a status line in settings.json is Baton's: this version's, or the Node version's.
+/// Whether a status line in settings.json is Baton's.
 pub fn is_baton_status_line(status_line: &Value) -> bool {
     status_line.text("command").is_some_and(|command| {
-        [&OWN_STATUS_LINE, &NODE_STATUS_LINE]
-            .iter()
-            .any(|pattern| pattern.as_ref().is_some_and(|pattern| pattern.is_match(command)))
+        OWN_STATUS_LINE
+            .as_ref()
+            .is_some_and(|pattern| pattern.is_match(command))
     })
 }
 
@@ -646,7 +619,7 @@ pub fn plan_install(
     } else {
         items.push(Item::new("hop", "same").at(&hop_file));
     }
-    // Node was always on PATH; this executable may not be.
+    // The executable may not be on PATH.
     if runs_from_path(exe) && !find_on_path("baton", env).is_some_and(|found| same_file(&found, exe)) {
         notes.push(format!(
             "The status line and /hop run baton from PATH, since {} cannot start a shell command (a space or a shell's own character in its path), and it is not on PATH: add {} to PATH.",
@@ -756,8 +729,7 @@ pub fn plan_install(
     })
 }
 
-/// Plans `baton uninstall`: Baton's entries go, this version's and the Node version's, and what was
-/// there before comes back.
+/// Plans `baton uninstall`: Baton's entries go, and what was there before comes back.
 pub fn plan_uninstall(paths: &Paths, env: &Env, ferry: FerryAccess<'_>) -> Result<Plan, InstallError> {
     let file = settings_path(paths);
     let (text, value) = read_settings(&file)?;
@@ -1079,10 +1051,8 @@ pub struct HookState {
     pub name: &'static str,
     /// Whether Baton's handler is there.
     pub installed: bool,
-    /// Whether everything the handler runs is still where it says (false when it is not installed).
+    /// Whether the program the handler runs is still where it says (false when it is not installed).
     pub program_exists: bool,
-    /// Whether the Node version of Baton wrote it.
-    pub node: bool,
 }
 
 /// Whether Baton's pieces are in settings.json.
@@ -1094,8 +1064,6 @@ pub struct InstallState {
     pub error: Option<String>,
     /// Whether the status line is Baton's.
     pub status_line: bool,
-    /// Whether the Node version of Baton wrote the status line or a hook: `baton install` replaces it.
-    pub node: bool,
     /// Each of Baton's hooks.
     pub hooks: Vec<HookState>,
     /// Whether the /hop command is Baton's.
@@ -1121,42 +1089,22 @@ pub fn install_state(paths: &Paths) -> InstallState {
                     name,
                     installed: false,
                     program_exists: false,
-                    node: false,
                 },
-                Some(handler) => {
-                    let node = !is_own_handler(handler);
-                    let exists = |path: Option<&str>| path.is_some_and(|path| Path::new(path).exists());
-                    let script = handler
-                        .at("args")
-                        .as_array()
-                        .and_then(|args| args.first())
-                        .and_then(Value::as_str);
-                    HookState {
-                        event,
-                        name,
-                        installed: true,
-                        program_exists: exists(handler.text("command")) && (!node || exists(script)),
-                        node,
-                    }
-                }
+                Some(handler) => HookState {
+                    event,
+                    name,
+                    installed: true,
+                    program_exists: handler
+                        .text("command")
+                        .is_some_and(|program| Path::new(program).exists()),
+                },
             },
         )
         .collect();
-    let status_line = settings.get("statusLine");
-    let own_status_line = status_line.is_some_and(is_baton_status_line);
-    let node_status_line = own_status_line
-        && status_line
-            .and_then(|status_line| status_line.text("command"))
-            .is_some_and(|command| {
-                !OWN_STATUS_LINE
-                    .as_ref()
-                    .is_some_and(|pattern| pattern.is_match(command))
-            });
     InstallState {
         ok: true,
         error: None,
-        status_line: own_status_line,
-        node: node_status_line || hooks.iter().any(|hook| hook.node),
+        status_line: settings.get("statusLine").is_some_and(is_baton_status_line),
         hooks,
         hop_command: read_text(&hop_command_path(paths)).is_some_and(|hop| hop.contains(HOP_MARKER)),
         record: read_json(&paths.install),
@@ -1305,17 +1253,6 @@ mod tests {
             Path::new("target/debug/baton-0f3a.exe"),
             "prompt"
         )));
-        // The Node version's.
-        let node = json!({
-            "type": "command",
-            "command": "C:/Program Files/nodejs/node.exe",
-            "args": ["E:/GitHub/baton/src/cli.js", "hook", "stop-failure"],
-            "timeout": 10
-        });
-        assert!(is_baton_handler(&node));
-        assert!(is_baton_handler(
-            &json!({ "type": "command", "command": "node", "args": ["C:\\b\\SRC\\CLI.JS", "hook", "stop"] })
-        ));
         // Anyone else's.
         for other in [
             json!({ "type": "command", "command": "echo pre" }),
@@ -1323,9 +1260,7 @@ mod tests {
             json!({ "type": "command", "command": "C:/tools/baton.exe", "args": ["hook", "unknown"] }),
             json!({ "type": "command", "command": "C:/tools/baton.exe", "args": ["status"] }),
             json!({ "type": "prompt", "command": "C:/tools/baton.exe", "args": ["hook", "stop"] }),
-            json!({ "type": "command", "command": "node", "args": ["C:/other/cli.js", "hook", "stop"] }),
-            json!({ "type": "command", "command": "node", "args": ["C:/b/src/cli.js", "hook"] }),
-            json!({ "type": "command", "command": "node", "args": ["C:/b/src/cli.js", "run", "stop"] }),
+            json!({ "type": "command", "command": "node", "args": ["C:/b/src/cli.js", "hook", "stop"] }),
             json!("text"),
             json!(null),
         ] {
@@ -1342,13 +1277,9 @@ mod tests {
         assert!(ours("\"C:/Program Files/Baton/baton.exe\" statusline"));
         assert!(ours("C:\\tools\\BATON.EXE statusline"));
         assert!(ours("target/debug/baton-0f3a.exe statusline"));
-        // The Node version's.
-        assert!(ours("node \"E:/GitHub/baton/src/cli.js\" statusline"));
-        assert!(ours(
-            "C:/nodejs/node.exe \"E:/GitHub/baton/src/cli.js\" statusline"
-        ));
         for other in [
             "~/.claude/statusline.sh",
+            "node \"C:/b/src/cli.js\" statusline",
             "mybaton statusline",
             "baton status",
             "baton statuslines",

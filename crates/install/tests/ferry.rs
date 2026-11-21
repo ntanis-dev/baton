@@ -371,45 +371,6 @@ fn a_baton_json_that_is_not_batons_is_backed_up_then_replaced() {
 }
 
 #[test]
-fn a_launcher_the_node_version_wrote_is_batons_replaced_without_a_note_and_removed() {
-    let (home, _, file) = ferry_home();
-    let paths = &home.paths;
-    let node = json!({
-        "schemaVersion": 1,
-        "id": "baton",
-        "name": "Baton",
-        "description": "Claude Code on your accounts, one after another",
-        "program": "C:/Program Files/nodejs/node.exe",
-        "args": ["E:/GitHub/baton/src/cli.js"],
-        "resumeArgs": ["--resume", "{conversation}"],
-        "continueArgs": ["--continue"],
-        "conversations": "claude-code",
-        "terminal": true,
-        "source": "baton install"
-    });
-    write_json(&file, &node);
-    let state = registration_state(paths, &Env::new(), NO_PATH.find, Path::new(EXE));
-    assert_eq!(
-        (state.state, state.program, state.node),
-        (Registered::Stale, true, true)
-    );
-    // Uninstall takes it away as Baton's own.
-    let (removed, _) = uninstall(paths);
-    assert_eq!(ferry_items(&removed), [("remove", Some(file.clone()))]);
-    assert!(!file.exists());
-    // Install replaces it, with no word about someone else's file.
-    write_json(&file, &node);
-    let (planned, _) = install(paths);
-    assert_eq!(ferry_items(&planned), [("update", Some(file.clone()))]);
-    assert!(
-        planned.notes.iter().all(|n| !n.contains("not Baton's")),
-        "{:?}",
-        planned.notes
-    );
-    assert_eq!(json_of(&file), launcher_def(Path::new(EXE)));
-}
-
-#[test]
 fn uninstall_removes_batons_launcher_only_after_a_backup_and_the_other_launchers_stay() {
     let (home, data, file) = ferry_home();
     let paths = &home.paths;
@@ -583,26 +544,17 @@ fn how_baton_stands_with_ferry_not_installed_not_registered_current_stale_not_ba
 
     install(paths);
     let current = state(EXE);
-    assert_eq!(
-        (current.state, current.program, current.node),
-        (Registered::Current, false, false)
-    );
+    assert_eq!((current.state, current.program), (Registered::Current, false));
 
     // The baton executable is elsewhere now.
     let moved = state("C:/tools/baton-moved/baton.exe");
-    assert_eq!(
-        (moved.state, moved.program, moved.node),
-        (Registered::Stale, true, false)
-    );
+    assert_eq!((moved.state, moved.program), (Registered::Stale, true));
     // The same program, older words.
     let mut older = launcher_def(Path::new(EXE));
     older["description"] = json!("older words");
     write_json(&file, &older);
     let changed = state(EXE);
-    assert_eq!(
-        (changed.state, changed.program, changed.node),
-        (Registered::Stale, false, false)
-    );
+    assert_eq!((changed.state, changed.program), (Registered::Stale, false));
 
     write_json(&file, &json!({ "id": "baton", "source": "by hand" }));
     assert_eq!(state(EXE).state, Registered::Foreign);

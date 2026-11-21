@@ -116,9 +116,7 @@ fn ferry_check(registration: &Registration) -> (Option<bool>, String) {
             format!("{file} is not Baton's: baton install replaces it"),
         ),
         Registered::Stale => {
-            let why = if registration.node {
-                "written by the Node version of Baton"
-            } else if registration.program {
+            let why = if registration.program {
                 "baton's path changed"
             } else {
                 "contents changed"
@@ -353,11 +351,6 @@ pub fn run_doctor(options: &DoctorOptions<'_>) -> Report {
             (false, format!("missing {missing}: baton install"))
         } else if !broken.is_empty() {
             (false, format!("paths gone for {broken}: baton install again"))
-        } else if install.node {
-            (
-                false,
-                "installed by the Node version of Baton: run baton install again".to_owned(),
-            )
         } else {
             (true, events(&|_| true))
         };

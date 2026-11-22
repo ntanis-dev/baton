@@ -1,7 +1,9 @@
 //! Time as Baton keeps it: epoch milliseconds in memory, ISO 8601 text (UTC, milliseconds) in its files,
 //! and the operator's local wall clock on the screen.
 
-use chrono::{DateTime, Datelike, Days, Local, LocalResult, Months, NaiveDate, TimeZone, Timelike, Utc};
+use jiff::civil::{Date, DateTime};
+use jiff::tz::TimeZone;
+use jiff::{Span, Timestamp};
 use serde_json::Value;
 
 /// A moment or a span, in milliseconds (a moment counts from the Unix epoch).
@@ -16,15 +18,15 @@ pub const DAY: Ms = 24 * HOUR;
 
 /// The time now.
 pub fn now_ms() -> Ms {
-    Utc::now().timestamp_millis()
+    Timestamp::now().as_millisecond()
 }
 
 /// A moment as the text Baton writes: `2026-11-15T09:30:00.000Z`. A moment outside the calendar is the
 /// empty string.
 pub fn iso(ms: Ms) -> String {
-    match DateTime::<Utc>::from_timestamp_millis(ms) {
-        Some(at) => at.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
-        None => String::new(),
+    match Timestamp::from_millisecond(ms) {
+        Ok(at) => at.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
+        Err(_) => String::new(),
     }
 }
 
@@ -40,16 +42,22 @@ pub fn parse_ms(text: &str) -> Option<Ms> {
     if text.is_empty() {
         return None;
     }
-    if let Ok(at) = DateTime::parse_from_rfc3339(text) {
-        return Some(at.timestamp_millis());
+    if let Ok(at) = text.parse::<Timestamp>() {
+        return Some(at.as_millisecond());
     }
     for format in ["%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%dT%H:%M"] {
-        if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(text, format) {
+        if let Ok(naive) = DateTime::strptime(format, text) {
             return from_local(naive);
         }
     }
-    let date = NaiveDate::parse_from_str(text, "%Y-%m-%d").ok()?;
-    Some(date.and_hms_opt(0, 0, 0)?.and_utc().timestamp_millis())
+    let date = Date::strptime("%Y-%m-%d", text).ok()?;
+    utc_ms(date)
+}
+
+/// UTC midnight at the start of a date.
+fn utc_ms(date: Date) -> Option<Ms> {
+    let at = TimeZone::UTC.to_timestamp(date.at(0, 0, 0, 0)).ok()?;
+    Some(at.as_millisecond())
 }
 
 /// [`parse_ms`] of text that may be missing.
@@ -87,43 +95,61 @@ pub struct LocalTime {
 
 /// The operator's wall clock at `ms`.
 pub fn local(ms: Ms) -> LocalTime {
-    let at = match Local.timestamp_millis_opt(ms) {
-        LocalResult::Single(at) | LocalResult::Ambiguous(at, _) => at,
-        LocalResult::None => Local.timestamp_millis_opt(0).earliest().unwrap_or_default(),
-    };
+    let at = Timestamp::from_millisecond(ms)
+        .unwrap_or(Timestamp::UNIX_EPOCH)
+        .to_zoned(TimeZone::system());
     LocalTime {
-        year: at.year(),
-        month: at.month(),
-        day: at.day(),
-        hour: at.hour(),
-        minute: at.minute(),
-        second: at.second(),
-        weekday: at.weekday().num_days_from_sunday(),
+        year: i32::from(at.year()),
+        month: at.month().unsigned_abs().into(),
+        day: at.day().unsigned_abs().into(),
+        hour: at.hour().unsigned_abs().into(),
+        minute: at.minute().unsigned_abs().into(),
+        second: at.second().unsigned_abs().into(),
+        weekday: at.weekday().to_sunday_zero_offset().unsigned_abs().into(),
     }
 }
 
 /// A naive local date and time as a moment. A time that occurs twice (the clock going back) is its
 /// first occurrence; one that does not exist (the clock going forward) is the same reading an hour on.
-fn from_local(naive: chrono::NaiveDateTime) -> Option<Ms> {
-    match Local.from_local_datetime(&naive) {
-        LocalResult::Single(at) | LocalResult::Ambiguous(at, _) => Some(at.timestamp_millis()),
-        LocalResult::None => {
-            let later = naive.checked_add_signed(chrono::Duration::hours(1))?;
-            Local
-                .from_local_datetime(&later)
-                .earliest()
-                .map(|at| at.timestamp_millis())
-        }
-    }
+fn from_local(naive: DateTime) -> Option<Ms> {
+    let at = TimeZone::system()
+        .to_ambiguous_timestamp(naive)
+        .compatible()
+        .ok()?;
+    Some(at.as_millisecond())
 }
 
 /// The moment of a local date and time. `month` counts from 1; a month past 12 or a day past the end
 /// of its month runs on into the next one, as a calendar would.
 pub fn local_ms(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> Option<Ms> {
-    let first = NaiveDate::from_ymd_opt(year, 1, 1)?
-        .checked_add_months(Months::new(month.checked_sub(1)?))?
-        .checked_add_days(Days::new(u64::from(day.checked_sub(1)?)))?;
-    from_local(first.and_hms_opt(hour, minute, 0)?)
+    let span = Span::new()
+        .try_months(i64::from(month.checked_sub(1)?))
+        .ok()?
+        .try_days(i64::from(day.checked_sub(1)?))
+        .ok()?;
+    let date = Date::new(i16::try_from(year).ok()?, 1, 1)
+        .ok()?
+        .checked_add(span)
+        .ok()?;
+    let time = jiff::civil::Time::new(i8::try_from(hour).ok()?, i8::try_from(minute).ok()?, 0, 0).ok()?;
+    from_local(date.to_datetime(time))
+}
+
+/// The first moment (UTC) of every month from the one holding `from` to `to`.
+pub fn utc_months(from: Ms, to: Ms) -> Vec<Ms> {
+    let mut out = Vec::new();
+    let Ok(start) = Timestamp::from_millisecond(from) else {
+        return out;
+    };
+    let mut next = Some(start.to_zoned(TimeZone::UTC).date().first_of_month());
+    while let Some(first) = next {
+        match utc_ms(first) {
+            Some(at) if at <= to => out.push(at),
+            _ => break,
+        }
+        next = first.checked_add(Span::new().months(1)).ok();
+    }
+    out
 }
 
 /// The local date of a moment, `2026-11-15`.
@@ -140,7 +166,13 @@ pub fn same_local_day(a: Ms, b: Ms) -> bool {
 
 /// The day of the week (0 for Sunday) of a calendar date; None when there is no such date.
 pub fn weekday_of(year: i32, month: u32, day: u32) -> Option<u32> {
-    NaiveDate::from_ymd_opt(year, month, day).map(|date| date.weekday().num_days_from_sunday())
+    let date = Date::new(
+        i16::try_from(year).ok()?,
+        i8::try_from(month).ok()?,
+        i8::try_from(day).ok()?,
+    )
+    .ok()?;
+    Some(date.weekday().to_sunday_zero_offset().unsigned_abs().into())
 }
 
 #[cfg(test)]
@@ -184,5 +216,35 @@ mod tests {
         assert!(same_local_day(at, at + HOUR));
         assert!(!same_local_day(at, at + DAY));
         assert_eq!(weekday_of(2026, 11, 15), Some(0));
+        assert_eq!(weekday_of(2026, 2, 30), None);
+    }
+
+    #[test]
+    fn local_times_without_a_zone_and_times_that_are_not() {
+        let at = local_ms(2026, 3, 10, 15, 20).unwrap();
+        assert_eq!(parse_ms("2026-03-10T15:20:00"), Some(at));
+        assert_eq!(parse_ms("2026-03-10T15:20"), Some(at));
+        assert_eq!(parse_ms("2026-03-10T15:20:00.250"), Some(at + 250));
+        assert_eq!(parse_ms("2026-03-10T15:20:00 or so"), None);
+        assert_eq!(parse_ms("2026-13-40"), None);
+        assert_eq!(iso(Ms::MAX), "");
+        assert_eq!(local_ms(2026, 0, 1, 0, 0), None);
+        assert_eq!(local_ms(2026, 1, 1, 24, 0), None);
+    }
+
+    #[test]
+    fn the_months_of_a_period_start_with_the_one_that_holds_its_first_moment() {
+        let from = parse_ms("2025-11-15T09:30:00.000Z").unwrap();
+        let to = parse_ms("2026-01-01T00:00:00.000Z").unwrap();
+        let months: Vec<String> = utc_months(from, to).into_iter().map(iso).collect();
+        assert_eq!(
+            months,
+            [
+                "2025-11-01T00:00:00.000Z",
+                "2025-12-01T00:00:00.000Z",
+                "2026-01-01T00:00:00.000Z"
+            ]
+        );
+        assert_eq!(utc_months(from, from).len(), 1);
     }
 }

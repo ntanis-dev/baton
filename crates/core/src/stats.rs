@@ -6,12 +6,11 @@
 
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, Datelike, Months, NaiveDate, Utc};
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use serde_json::Value;
 
-use crate::clock::{DAY, Ms, iso, local_date, ms_of, parse_ms};
+use crate::clock::{DAY, Ms, iso, local_date, ms_of, parse_ms, utc_months};
 use crate::config::{Config, Mark, Policy, name_of, thresholds};
 use crate::fsutil::read_json_lines;
 use crate::json::{Get, ser_num, ser_opt_num};
@@ -21,33 +20,9 @@ use crate::sessions::read_turn_samples;
 use crate::usage::{history_file, same_period};
 use crate::window::PerWindow;
 
-/// The first moment of every month from the one holding `from` to `to`.
-fn months_between(from: Ms, to: Ms) -> Vec<Ms> {
-    let mut out = Vec::new();
-    let Some(start) = DateTime::<Utc>::from_timestamp_millis(from) else {
-        return out;
-    };
-    let Some(month) = NaiveDate::from_ymd_opt(start.year(), start.month(), 1) else {
-        return out;
-    };
-    let mut next = Some(month);
-    while let Some(first) = next {
-        let at = first
-            .and_time(chrono::NaiveTime::MIN)
-            .and_utc()
-            .timestamp_millis();
-        if at > to {
-            break;
-        }
-        out.push(at);
-        next = first.checked_add_months(Months::new(1));
-    }
-    out
-}
-
 /// The history of `kind` between two moments, oldest first.
 pub fn read_history(paths: &Paths, kind: &str, from: Ms, to: Ms) -> Vec<Value> {
-    let mut out: Vec<(Ms, Value)> = months_between(from, to)
+    let mut out: Vec<(Ms, Value)> = utc_months(from, to)
         .into_iter()
         .flat_map(|month| read_json_lines(&history_file(paths, kind, month)))
         .filter_map(|line| {
@@ -415,22 +390,6 @@ mod tests {
     use crate::paths::baton_paths;
     use crate::sessions::append_turn_sample;
     use serde_json::json;
-
-    #[test]
-    fn months() {
-        let nov = parse_ms("2026-11-15T10:00:00.000Z").unwrap();
-        let jan = parse_ms("2027-01-02T00:00:00.000Z").unwrap();
-        let firsts: Vec<String> = months_between(nov, jan).into_iter().map(iso).collect();
-        assert_eq!(
-            firsts,
-            [
-                "2026-11-01T00:00:00.000Z",
-                "2026-12-01T00:00:00.000Z",
-                "2027-01-01T00:00:00.000Z"
-            ]
-        );
-        assert_eq!(months_between(nov, nov).len(), 1);
-    }
 
     #[test]
     fn a_week_of_history() {

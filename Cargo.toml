@@ -32,8 +32,14 @@ baton-testkit = { path = "crates/testkit" }
 
 # Third party
 base64 = "=0.22.1"
-chrono = { version = "=0.4.45", default-features = false, features = ["clock", "std"] }
 crossterm = "=0.29.0"
+# The system time zone, and the bundled zone data only where the platform has none of its own (Windows).
+jiff = { version = "=0.2.41", default-features = false, features = [
+    "std",
+    "tz-system",
+    "tzdb-bundle-platform",
+    "tzdb-zoneinfo",
+] }
 libc = "=0.2.191"
 regex = "=1.13.1"
 serde = { version = "=1.0.229", features = ["derive"] }

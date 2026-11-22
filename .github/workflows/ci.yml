@@ -60,12 +60,15 @@ jobs:
           command: check
           arguments: --locked
 
-  # Windows is where Baton is built and used most, and where its runners cost the most, so it runs on
-  # pull requests and on demand only, never on a push.
-  windows:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    runs-on: windows-latest
-    timeout-minutes: 30
+  # The code that differs by platform is linted and tested where it runs. Formatting, the lock-age rule
+  # and cargo-deny do not depend on the platform, so they stay on Ubuntu above.
+  platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Install the toolchain from rust-toolchain.toml
@@ -73,5 +76,7 @@ jobs:
           rustup toolchain install
           rustup show
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test
         run: cargo test --workspace --locked --no-fail-fast

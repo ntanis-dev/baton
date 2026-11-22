@@ -44,7 +44,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::claude_json::{Loaded, load};
+use crate::claude_json::{Loaded, load, rewrite};
 use crate::profile::{SEED_KEYS, SEED_PROJECT_KEYS, normalize_project_key};
 
 /// The name `~/.claude.json` takes part under (never an account's id).
@@ -421,6 +421,17 @@ struct Party {
     leaves: Leaves,
 }
 
+impl Party {
+    /// Whether a file read now is what this participant was read as.
+    fn is(&self, loaded: &Loaded) -> bool {
+        match (loaded, &self.config) {
+            (Loaded::Missing, None) => !self.unreadable,
+            (Loaded::Json(Value::Object(now)), Some(then)) => now == then,
+            _ => false,
+        }
+    }
+}
+
 /// Reads a participant.
 fn party(id: &str, file: &Path, keys: &Keys, spellings: &mut BTreeMap<String, String>) -> Party {
     let (config, unreadable) = match load(file) {
@@ -621,9 +632,12 @@ fn collect(state: &mut State, party: &Party, report: &mut SyncReport) -> BTreeSe
 }
 
 /// Brings one account's `.claude.json` in step with what the accounts agree on, leaving alone the
-/// leaves that wait for the operator. Returns how many settings were set or taken out.
-fn apply(state: &mut State, party: &Party, blocked: Option<&BTreeSet<String>>) -> io::Result<usize> {
+/// leaves that wait for the operator. Returns how many settings were set or taken out; None when the
+/// file is no longer what this sync read (a Claude Code saved it meanwhile): nothing is written then,
+/// and what was saved is for the next sync to fold in.
+fn apply(state: &mut State, party: &Party, blocked: Option<&BTreeSet<String>>) -> io::Result<Option<usize>> {
     let mut config = party.config.clone().unwrap_or_default();
+    let before = state.seen.get(&party.id).cloned();
     let mut seen = state.seen.remove(&party.id).unwrap_or_default();
     let ids: BTreeSet<&String> = state.base.keys().chain(party.leaves.keys()).collect();
     let mut changed = 0;
@@ -649,10 +663,20 @@ fn apply(state: &mut State, party: &Party, blocked: Option<&BTreeSet<String>>) -
         }
     }
     if changed > 0 {
-        write_json_atomic(&party.file, &Value::Object(config))?;
+        let mut moved = false;
+        rewrite(&party.file, |loaded| {
+            moved = !party.is(loaded);
+            (!moved).then(|| Value::Object(config.clone()))
+        })?;
+        if moved {
+            if let Some(before) = before {
+                state.seen.insert(party.id.clone(), before);
+            }
+            return Ok(None);
+        }
     }
     state.seen.insert(party.id.clone(), seen);
-    Ok(changed)
+    Ok(Some(changed))
 }
 
 /// Every participant as it is on disk: `~/.claude.json` first, then the accounts in their order.
@@ -694,6 +718,9 @@ pub fn sync_settings(paths: &Paths, config: &Config, apply: Apply<'_>, now: Ms) 
     sync_within(paths, config, apply, now, LOCK_WAIT)
 }
 
+/// How often a sync starts over because a Claude Code saved a profile it was about to write.
+const ROUNDS: usize = 3;
+
 /// [`sync_settings`], waiting at most `wait` for another baton that is syncing.
 fn sync_within(
     paths: &Paths,
@@ -702,10 +729,37 @@ fn sync_within(
     now: Ms,
     wait: Duration,
 ) -> io::Result<SyncReport> {
+    let mut merged = SyncReport::default();
+    for round in 1..=ROUNDS {
+        let (report, moved) = sync_once(paths, config, which, now, wait)?;
+        // What an earlier round brought and wrote stays said.
+        merged.brought.extend(report.brought);
+        merged.written.extend(report.written);
+        merged = SyncReport {
+            brought: merged.brought,
+            written: merged.written,
+            ..report
+        };
+        if !moved || merged.busy || round == ROUNDS {
+            break;
+        }
+    }
+    Ok(merged)
+}
+
+/// One round of a sync, and whether a profile it was to write had been saved by a Claude Code since it
+/// was read: that profile was left as it is, and another round reads it anew.
+fn sync_once(
+    paths: &Paths,
+    config: &Config,
+    which: Apply<'_>,
+    now: Ms,
+    wait: Duration,
+) -> io::Result<(SyncReport, bool)> {
     let mut report = SyncReport::default();
     let Some(_lock) = lock(paths, wait) else {
         report.busy = true;
-        return Ok(report);
+        return Ok((report, false));
     };
     let before: State = read_json_as(&sync_file(paths)).unwrap_or_default();
     let mut state = before.clone();
@@ -736,6 +790,7 @@ fn sync_within(
         });
     }
     let mut applied: BTreeSet<&str> = BTreeSet::new();
+    let mut moved = false;
     for party in all.iter().filter(|party| party.id != HOME && !party.unreadable) {
         let wanted = match which {
             Apply::Nothing => false,
@@ -745,7 +800,10 @@ fn sync_within(
         if !wanted {
             continue;
         }
-        let settings = self::apply(&mut state, party, blocked.get(&party.id))?;
+        let Some(settings) = self::apply(&mut state, party, blocked.get(&party.id))? else {
+            moved = true;
+            continue;
+        };
         applied.insert(party.id.as_str());
         if settings > 0 {
             report.written.push(Written {
@@ -792,7 +850,7 @@ fn sync_within(
     state.pending = pending;
     report.questions = state.pending.clone();
     save(paths, &before, &mut state, now)?;
-    Ok(report)
+    Ok((report, moved))
 }
 
 /// The settings that wait for the operator, as the last sync left them.
@@ -1246,6 +1304,40 @@ mod tests {
                 true
             );
         }
+    }
+
+    #[test]
+    fn a_profile_claude_code_saved_meanwhile_is_not_written_over() {
+        let (_dir, paths, config) = home();
+        put(&paths.claude_json, &json!({ "theme": "dark" }));
+        all(&paths, &config);
+        change(&paths, "b", |b| b["theme"] = json!("light"));
+        // A sync reads everyone and works out that a takes b's theme...
+        let keys = keys_of(&config);
+        let mut state: State = read_json_as(&sync_file(&paths)).unwrap();
+        let everyone = parties(&paths, &config, &keys, &mut state);
+        let mut report = SyncReport::default();
+        for party in &everyone {
+            collect(&mut state, party, &mut report);
+        }
+        // ...and before it writes a's file, the Claude Code running there saves it.
+        change(&paths, "a", |a| a["numStartups"] = json!(7));
+        let a = everyone.iter().find(|party| party.id == "a").unwrap();
+        let seen = state.seen.get("a").cloned();
+        assert_eq!(apply(&mut state, a, None).unwrap(), None);
+        assert_eq!(state.seen.get("a").cloned(), seen);
+        assert_eq!(
+            profile(&paths, "a"),
+            json!({ "theme": "dark", "numStartups": 7 }),
+            "left as Claude Code saved it"
+        );
+        // The next sync reads it anew: it is in step, and what was saved is kept.
+        let report = all(&paths, &config);
+        assert!(report.written.iter().any(|written| written.account == "a"));
+        assert_eq!(
+            profile(&paths, "a"),
+            json!({ "theme": "light", "numStartups": 7 })
+        );
     }
 
     #[test]

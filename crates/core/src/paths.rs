@@ -62,6 +62,22 @@ pub fn resolve_home(env: &Env) -> PathBuf {
     }
 }
 
+/// Why a build made while developing Baton does not run: nothing says where its home is, so it would
+/// work on the developer's own accounts and `~/.claude`. Such a build (`dev`: one with debug
+/// assertions, what `cargo run` and `cargo test` make) runs only with `BATON_HOME` set, whatever it is
+/// set to; an installed build (`cargo install`, a release) is never held back. None when it may run.
+pub fn dev_refusal(dev: bool, env: &Env) -> Option<String> {
+    if !dev || env.some("BATON_HOME").is_some() {
+        return None;
+    }
+    Some(
+        "baton: this is a development build. It runs only with BATON_HOME set, so that it never changes \
+         your own accounts and ~/.claude by accident. Point BATON_HOME at a scratch folder, or install a \
+         release build (cargo install --locked --path crates/cli)."
+            .to_owned(),
+    )
+}
+
 /// Every folder and file Baton knows by name.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Paths {
@@ -201,6 +217,19 @@ pub fn account_from_env(env: &Env, paths: &Paths) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_development_build_runs_only_where_its_home_is_named() {
+        let named = Env::from_pairs([("BATON_HOME", "scratch")]);
+        let unnamed = Env::from_pairs([("HOME", "/home/me")]);
+        assert_eq!(dev_refusal(true, &named), None);
+        assert_eq!(dev_refusal(false, &unnamed), None, "an installed build");
+        let refusal = dev_refusal(true, &unnamed).unwrap();
+        assert!(
+            refusal.contains("BATON_HOME") && !refusal.contains("  "),
+            "{refusal}"
+        );
+    }
 
     #[test]
     fn ids() {

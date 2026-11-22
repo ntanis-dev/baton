@@ -315,6 +315,10 @@ cargo deny check                                         # advisories, licences,
 cargo run -p baton-tui --example menu_demo               # the menu on fixture accounts; no real profiles or sign-ins
 ```
 
+A build made while developing (`cargo run`, `cargo build`) runs only with `BATON_HOME` set, so it cannot change your
+own accounts and `~/.claude` by accident; point it at a scratch folder. What `cargo install` builds is not held back.
+CI lints and tests on Linux, Windows and macOS.
+
 The workspace is a handful of crates under `crates/`: `core` (accounts, policy, usage, sessions and the text
 layout), `profile` (the profiles and their shared files), `claude` (running Claude Code and the usage check),
 `install` (the hooks, the status line and the Ferry registration), `tui` (the menu) and `cli` (the `baton`

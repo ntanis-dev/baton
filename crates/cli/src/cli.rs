@@ -339,6 +339,14 @@ pub fn main() -> i32 {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut stdout = std::io::stdout();
     let mut stderr = std::io::stderr();
+    if let Some(refusal) = baton_core::paths::dev_refusal(cfg!(debug_assertions), &Env::from_process()) {
+        let _ = writeln!(stderr, "{refusal}");
+        return 1;
+    }
+    // What a Baton from before files were made private left open is closed now.
+    baton_core::fsutil::keep_private(
+        &baton_core::paths::baton_paths(baton_core::paths::resolve_home(&Env::from_process())).root,
+    );
     let out_tty = stdout.is_terminal();
     let err_tty = stderr.is_terminal();
     let columns = crate::console::columns();

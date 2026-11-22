@@ -14,13 +14,13 @@ use std::sync::Mutex;
 
 use baton_core::clock::now_ms;
 use baton_core::config::{Account, Mark, load_config};
-use baton_core::fsutil::{random_hex, write_json_atomic};
+use baton_core::fsutil::random_hex;
 use baton_core::json::{Get, Object, compact, is_truthy};
 use baton_core::paths::{Paths, global_config_file, profile_dir, resolve, same_path};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::claude_json::{Loaded, load};
+use crate::claude_json::{Loaded, load, rewrite};
 use crate::copies::{copy_state, sync_copies};
 use crate::sync::{Apply, full_sync, sync_settings};
 
@@ -713,28 +713,31 @@ pub fn seed_global_config_file(paths: &Paths, name: &str) -> io::Result<Vec<Link
     let Some(source) = load(&paths.claude_json).json().filter(is_truthy) else {
         return Ok(vec![done(NAME, "no-source")]);
     };
-    let before = match load(&target_file) {
-        Loaded::Unreadable => {
-            return Ok(vec![done_with(
-                NAME,
-                "skipped",
-                "the profile's own is not valid JSON; left as it is",
-            )]);
+    let (mut unreadable, mut existed) = (false, false);
+    let wrote = rewrite(&target_file, |loaded| {
+        unreadable = *loaded == Loaded::Unreadable;
+        if unreadable {
+            return None;
         }
-        loaded => loaded.json().filter(is_truthy),
-    };
-    let after = seed_global_config(Some(&source), before.as_ref());
-    if before
-        .as_ref()
-        .is_some_and(|before| compact(before) == compact(&after))
-    {
-        return Ok(vec![done_with(NAME, "ok", "seeded")]);
-    }
-    write_json_atomic(&target_file, &after)?;
-    Ok(vec![done(
-        NAME,
-        if before.is_some() { "refreshed" } else { "seeded" },
-    )])
+        let before = loaded.clone().json().filter(is_truthy);
+        existed = before.is_some();
+        let after = seed_global_config(Some(&source), before.as_ref());
+        let same = before
+            .as_ref()
+            .is_some_and(|before| compact(before) == compact(&after));
+        (!same).then_some(after)
+    })?;
+    Ok(vec![if unreadable {
+        done_with(
+            NAME,
+            "skipped",
+            "the profile's own is not valid JSON; left as it is",
+        )
+    } else if !wrote {
+        done_with(NAME, "ok", "seeded")
+    } else {
+        done(NAME, if existed { "refreshed" } else { "seeded" })
+    }])
 }
 
 /// Carries a folder's trust (and its other seeded project keys) from the profile a session ran on to
@@ -747,44 +750,45 @@ pub fn carry_trust(paths: &Paths, from: &str, to: &str, cwd: &str) -> io::Result
     let source = load(&global_config_file(paths, from))
         .json()
         .unwrap_or(Value::Null);
-    let target_file = global_config_file(paths, to);
-    let target = match load(&target_file) {
-        // The account's identity is in there: never written over.
-        Loaded::Unreadable => return Ok(false),
-        loaded => loaded
-            .json()
-            .and_then(|value| value.as_object().cloned())
-            .unwrap_or_default(),
-    };
     let want = normalize_project_key(cwd);
-    let mut changed = false;
-    let mut projects = target
-        .get("projects")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    for (key, entry) in source.at("projects").as_object().into_iter().flatten() {
-        if normalize_project_key(key) != want || !entry.truthy("hasTrustDialogAccepted") {
-            continue;
-        }
-        let Some(entry) = entry.as_object() else {
-            continue;
+    rewrite(&global_config_file(paths, to), |loaded| {
+        let target = match loaded {
+            // The account's identity is in there: never written over.
+            Loaded::Unreadable => return None,
+            loaded => loaded
+                .clone()
+                .json()
+                .and_then(|value| value.as_object().cloned())
+                .unwrap_or_default(),
         };
-        let merged = with_project_keys(projects.get(key), &picked_project_keys(entry));
-        if projects
-            .get(key)
-            .is_none_or(|own| compact(own) != compact(&merged))
-        {
-            projects.insert(key.clone(), merged);
-            changed = true;
+        let mut changed = false;
+        let mut projects = target
+            .get("projects")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        for (key, entry) in source.at("projects").as_object().into_iter().flatten() {
+            if normalize_project_key(key) != want || !entry.truthy("hasTrustDialogAccepted") {
+                continue;
+            }
+            let Some(entry) = entry.as_object() else {
+                continue;
+            };
+            let merged = with_project_keys(projects.get(key), &picked_project_keys(entry));
+            if projects
+                .get(key)
+                .is_none_or(|own| compact(own) != compact(&merged))
+            {
+                projects.insert(key.clone(), merged);
+                changed = true;
+            }
         }
-    }
-    if changed {
-        let mut out = target;
-        out.insert("projects".to_owned(), Value::Object(projects));
-        write_json_atomic(&target_file, &out)?;
-    }
-    Ok(changed)
+        changed.then(|| {
+            let mut out = target;
+            out.insert("projects".to_owned(), Value::Object(projects));
+            Value::Object(out)
+        })
+    })
 }
 
 /// Removes Baton's links from a profile (the folder itself, with its own sign-in, stays). Returns the

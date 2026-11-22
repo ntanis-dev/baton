@@ -1,5 +1,9 @@
 //! Small file helpers. State files are replaced atomically (a temporary file in the same folder, then a
 //! rename), so a reader never sees half a file; history files are append-only JSON lines.
+//!
+//! What Baton makes is the operator's alone (unix: folders 0700, files 0600), since its records hold
+//! what other users of the machine have no business reading (an MCP server's `env`, backups of
+//! `settings.json`). A file that is already there keeps the mode it has when it is replaced.
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -46,7 +50,16 @@ pub fn read_text(file: &Path) -> Option<String> {
     fs::read_to_string(file).ok()
 }
 
-/// The permissions (unix) of what [`write_file_atomic`] creates; folders that are there keep theirs.
+/// The mode (unix) of a folder Baton makes when none is asked for.
+#[cfg(unix)]
+const PRIVATE_DIR: u32 = 0o700;
+
+/// The mode (unix) of a file Baton makes when none is asked for.
+#[cfg(unix)]
+const PRIVATE_FILE: u32 = 0o600;
+
+/// The permissions (unix) of what [`write_file_atomic`] creates; None is the operator's alone. Folders
+/// that are there keep theirs, and so does a file that is replaced when no mode is asked for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Modes {
     /// The mode of every folder it creates.
@@ -55,15 +68,38 @@ pub struct Modes {
     pub file: Option<u32>,
 }
 
-/// Creates `dir` and its missing parents, each with `mode` when one is given (unix).
+/// Creates `dir` and its missing parents, each with `mode` (unix), or the operator's alone when none
+/// is given.
 pub fn create_dirs(dir: &Path, mode: Option<u32>) -> io::Result<()> {
     #[cfg(unix)]
-    if let Some(mode) = mode {
+    {
         use std::os::unix::fs::DirBuilderExt;
-        return fs::DirBuilder::new().recursive(true).mode(mode).create(dir);
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(mode.unwrap_or(PRIVATE_DIR))
+            .create(dir)
     }
-    let _ = mode;
-    fs::create_dir_all(dir)
+    #[cfg(not(unix))]
+    {
+        let _ = mode;
+        fs::create_dir_all(dir)
+    }
+}
+
+/// Makes a folder that is there the operator's alone (unix), so that nothing under it can be reached
+/// by another user whatever its own mode is. Best effort.
+pub fn keep_private(dir: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let open =
+            fs::metadata(dir).is_ok_and(|meta| meta.is_dir() && meta.permissions().mode() & 0o077 != 0);
+        if open {
+            let _ = fs::set_permissions(dir, fs::Permissions::from_mode(PRIVATE_DIR));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = dir;
 }
 
 /// Whether a failed rename or read is the kind Windows gives while another process holds the file (a
@@ -96,14 +132,21 @@ pub fn write_bytes_atomic(file: &Path, bytes: &[u8], modes: Modes) -> io::Result
     let mut options = OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
-    if let Some(mode) = modes.file {
+    {
         use std::os::unix::fs::OpenOptionsExt;
-        options.mode(mode);
+        options.mode(modes.file.unwrap_or(PRIVATE_FILE));
     }
     let written = options.open(&tmp).and_then(|mut out| out.write_all(bytes));
     if let Err(error) = written {
         let _ = fs::remove_file(&tmp);
         return Err(error);
+    }
+    // A file that is there keeps its mode, unless another one is asked for.
+    #[cfg(unix)]
+    if modes.file.is_none()
+        && let Ok(meta) = fs::metadata(file)
+    {
+        let _ = fs::set_permissions(&tmp, meta.permissions());
     }
     // Windows refuses a rename over a file another process has open without delete sharing (a virus
     // scanner, an editor); retry briefly.
@@ -136,13 +179,16 @@ pub fn append_json_line<T: Serialize + ?Sized>(file: &Path, value: &T) -> io::Re
 /// Appends `text` to `file`, creating its folder.
 pub fn append_text(file: &Path, text: &str) -> io::Result<()> {
     if let Some(parent) = file.parent() {
-        fs::create_dir_all(parent)?;
+        create_dirs(parent, None)?;
     }
-    OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(file)?
-        .write_all(text.as_bytes())
+    let mut options = OpenOptions::new();
+    options.append(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(PRIVATE_FILE);
+    }
+    options.open(file)?.write_all(text.as_bytes())
 }
 
 /// The JSON lines of `file`. A torn last line (a writer that died mid-append) is skipped, and so is a
@@ -184,6 +230,43 @@ pub fn mtime_ms(path: &Path) -> Option<i64> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[cfg(unix)]
+    #[test]
+    fn what_baton_makes_is_the_operators_alone_and_what_is_there_keeps_its_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("root/usage/work.json");
+        write_json_atomic(&state, &json!({ "a": 1 })).unwrap();
+        assert_eq!(mode(&state), 0o600);
+        assert_eq!(mode(&dir.path().join("root")), 0o700);
+        assert_eq!(mode(&dir.path().join("root/usage")), 0o700);
+        let log = dir.path().join("root/history/events.jsonl");
+        append_json_line(&log, &json!({ "n": 1 })).unwrap();
+        assert_eq!((mode(&log), mode(log.parent().unwrap())), (0o600, 0o700));
+        // A file the operator keeps readable stays so when it is replaced, and one that is asked to
+        // be something else is.
+        let theirs = dir.path().join("settings.json");
+        fs::write(&theirs, "{}").unwrap();
+        fs::set_permissions(&theirs, fs::Permissions::from_mode(0o644)).unwrap();
+        write_json_atomic(&theirs, &json!({ "b": 2 })).unwrap();
+        assert_eq!(mode(&theirs), 0o644);
+        let asked = Modes {
+            dir: Some(0o750),
+            file: Some(0o640),
+        };
+        let shared = dir.path().join("shared/note.txt");
+        write_file_atomic(&shared, "x", asked).unwrap();
+        assert_eq!((mode(&shared), mode(shared.parent().unwrap())), (0o640, 0o750));
+        // A folder made before this rule is closed when Baton starts.
+        let open = dir.path().join("older");
+        fs::create_dir(&open).unwrap();
+        fs::set_permissions(&open, fs::Permissions::from_mode(0o755)).unwrap();
+        keep_private(&open);
+        assert_eq!(mode(&open), 0o700);
+        keep_private(&dir.path().join("nowhere"));
+    }
 
     #[test]
     fn json_files_are_written_whole_and_read_back() {

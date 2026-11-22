@@ -27,7 +27,7 @@ use baton_core::fsutil::{is_alive, read_json, read_json_lines};
 use baton_core::json::Get;
 use baton_core::paths::{Paths, profile_dir};
 use baton_core::poll::poll_holder;
-use baton_core::sessions::list_wrappers;
+use baton_core::sessions::{SessionLock, acquire_lock, list_wrappers, lock_holder};
 use baton_core::state::{Want, load_snapshot};
 use baton_core::usage::history_file;
 use baton_testkit::fixtures::{FAKE_CLAUDE, FAKE_CLAUDE_BOTH, baton, bin, launcher};
@@ -1017,6 +1017,114 @@ fn a_conversation_already_running_under_another_baton_is_refused() {
     );
     write(&first.dir.join("release"), "");
     assert_eq!(first.finish().0, 0);
+}
+
+/// A session whose claude goes over to another conversation (`/resume`), which is then refused. With
+/// `more`, it waits for the file `free` and is refused again.
+fn resumed_into_another_then_refused(more: bool) -> Vec<Value> {
+    let turn = limited(2 * H);
+    let there = |step: &Value| {
+        let mut step = step.clone();
+        step["session_id"] = json!(CLEARED);
+        step
+    };
+    let refused = [there(&turn[2]), turn[3].clone(), there(&turn[4])];
+    let mut out = vec![turn[0].clone(), turn[1].clone(), json!({ "waitFile": "go" })];
+    out.push(json!({ "hook": "session-start", "source": "resume", "session_id": CLEARED }));
+    out.push(json!({ "sleep": 300 }));
+    out.extend(refused.clone());
+    if more {
+        out.push(json!({ "waitFile": "free" }));
+        out.push(json!({ "sleep": 300 }));
+        out.extend(refused);
+    } else {
+        out.push(json!({ "sleep": 600 }));
+        out.push(json!({ "exit": 0 }));
+    }
+    out
+}
+
+/// Holds the lock of the conversation `CLEARED` as another wrapper would, then lets the session go on.
+fn held_by_another(run: &Run) -> SessionLock {
+    until(|| run.has_step("statusline").then_some(()));
+    let held = acquire_lock(
+        run.paths(),
+        CLEARED,
+        &json!({ "pid": 4242, "wrapper": "another" }),
+    )
+    .taken()
+    .unwrap();
+    write(&run.dir.join("go"), "");
+    held
+}
+
+/// Waits until the conversation `CLEARED` was refused, and then for the wrapper to have looked at it.
+fn refused_there(run: &Run) {
+    until(|| {
+        read_json(&run.paths().sessions.join(CLEARED).join("turn.json"))
+            .filter(|turn| turn.text("event") == Some("stop-failure"))
+    });
+    thread::sleep(Duration::from_millis(500));
+}
+
+#[test]
+fn a_conversation_another_baton_drives_is_followed_but_never_moved_by_this_one() {
+    let _serial = serial();
+    let mut run = lead(Setup::new(json!([steps(&[resumed_into_another_then_refused(
+        false
+    )])])));
+    let held = held_by_another(&run);
+    refused_there(&run);
+    let (code, lead) = run.finish();
+    assert_eq!(code, 0);
+    assert_eq!(run.invocations().len(), 1, "claude was not ended");
+    assert!(run.hops().is_empty());
+    assert_eq!(lead.session_id(), Some(CLEARED));
+    assert!(has_event(&lead, "session lock held elsewhere"));
+    assert!(
+        decisions(&lead, "action").is_empty(),
+        "nothing is decided about it"
+    );
+    let said = run.output.text();
+    assert!(
+        said.contains(&format!(
+            "baton: conversation {CLEARED} was already running under another baton (pid 4242); that one moves it between accounts, this one left it alone."
+        )),
+        "{said}"
+    );
+    // The other wrapper's lock and record are as they were.
+    assert_eq!(lock_holder(run.paths(), CLEARED).unwrap()["wrapper"], "another");
+    drop(held);
+}
+
+#[test]
+fn a_conversation_the_other_baton_let_go_of_is_this_ones_from_then_on() {
+    let _serial = serial();
+    let mut run = lead(Setup::new(json!([
+        steps(&[resumed_into_another_then_refused(true), wait_end()]),
+        start_then_exit(),
+    ])));
+    let held = held_by_another(&run);
+    refused_there(&run);
+    assert_eq!(run.invocations().len(), 1, "held elsewhere: left alone");
+    drop(held);
+    write(&run.dir.join("free"), "");
+    let (code, lead) = run.finish();
+    assert_eq!(code, 0);
+    assert!(has_event(&lead, "session lock taken"));
+    let invocations = run.invocations();
+    assert_eq!(invocations.len(), 2);
+    let resumed = argv(&invocations[1]);
+    assert_eq!(
+        resumed[resumed.len() - 3..resumed.len() - 1],
+        ["--resume", CLEARED]
+    );
+    assert_eq!(
+        hop_fields(&run, &["from", "to", "reason"]),
+        [["acct1", "acct2", "refusal"]]
+    );
+    let said = run.output.text();
+    assert!(!said.contains("another baton"), "{said}");
 }
 
 #[test]

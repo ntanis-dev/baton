@@ -209,7 +209,7 @@ mod tests {
     use super::*;
     use crate::fsutil::write_json_atomic;
     use crate::paths::baton_paths;
-    use crate::sessions::{Lock, acquire_lock, write_session_file};
+    use crate::sessions::{acquire_lock, write_session_file};
     use serde_json::{Value, json};
 
     const ID: &str = "6f0b2d4e-1c3a-4b5d-8e9f-0a1b2c3d4e5f";
@@ -292,14 +292,13 @@ mod tests {
             not_ours.contains("was not, so Baton leaves it alone"),
             "{not_ours}"
         );
-        assert_eq!(
-            acquire_lock(
-                &paths,
-                ID,
-                &json!({ "pid": me(), "wrapper": "w1", "account": "work" })
-            ),
-            Lock::Taken
-        );
+        let _held = acquire_lock(
+            &paths,
+            ID,
+            &json!({ "pid": me(), "wrapper": "w1", "account": "work" }),
+        )
+        .taken()
+        .unwrap();
         write_session_file(&paths, ID, "turn.json", &json!({ "state": "running" })).unwrap();
         let done = hop(&paths, &request(&env, Some(ID), None)).unwrap();
         assert_eq!(
@@ -369,14 +368,13 @@ mod tests {
         .unwrap();
         let env = Env::new();
         let now = request(&env, None, None).now;
-        assert_eq!(
-            acquire_lock(
-                &paths,
-                ID,
-                &json!({ "pid": me(), "wrapper": "w1", "account": "work" })
-            ),
-            Lock::Taken
-        );
+        let _held = acquire_lock(
+            &paths,
+            ID,
+            &json!({ "pid": me(), "wrapper": "w1", "account": "work" }),
+        )
+        .taken()
+        .unwrap();
         let to = |record: Value| {
             write_json_atomic(&wrapper_file(&paths, "w1"), &record).unwrap();
             hop(&paths, &request(&env, Some(ID), None)).unwrap().to

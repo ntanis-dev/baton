@@ -16,10 +16,12 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use baton_core::clock::{Ms, iso};
 use baton_core::fsutil::{Modes, read_json, write_bytes_atomic, write_json_atomic};
 use baton_core::json::{Object, is_truthy};
+use baton_core::oslock::OsLock;
 use baton_core::paths::{Paths, is_account_id, profile_dir};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -33,6 +35,9 @@ pub const COPIED: [&str; 3] = ["settings.json", "CLAUDE.md", "keybindings.json"]
 
 /// How many conflicts are kept.
 const KEPT_CONFLICTS: usize = 50;
+
+/// How long a copy sync waits for another baton to finish its own.
+const LOCK_WAIT: Duration = Duration::from_secs(3);
 
 /// What Baton last copied into each profile.
 pub fn copies_file(paths: &Paths) -> PathBuf {
@@ -188,6 +193,11 @@ struct Changed {
 /// Brings the profiles' copies in line. `names` are the profiles to bring in line (in priority order);
 /// profiles Baton copied into before are included too. Returns one entry per file and profile.
 pub fn sync_copies<S: AsRef<str>>(paths: &Paths, names: &[S], now: Ms) -> io::Result<Vec<CopyEntry>> {
+    // One baton at a time: two that read the record together would each copy over the other's work.
+    // Another one still at it after the wait brings the copies in line itself.
+    let Some(_lock) = OsLock::take(&paths.run.join("copies.lock"), LOCK_WAIT)? else {
+        return Ok(Vec::new());
+    };
     let mut record = read_record(paths).unwrap_or_default();
     record.insert("version".to_owned(), json!(1));
     let mut copied = object_of(&record, "profiles");

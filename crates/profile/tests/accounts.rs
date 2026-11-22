@@ -57,6 +57,26 @@ fn changes(value: Value) -> Object {
 }
 
 #[test]
+fn changes_made_at_the_same_time_all_land() {
+    let home = temp_home();
+    let paths = &home.paths;
+    add(paths, "first").unwrap();
+    // Several batons at once: each reads the config, changes it and saves it back.
+    let adding: Vec<_> = (0..4)
+        .map(|n| {
+            let paths = paths.clone();
+            std::thread::spawn(move || add(&paths, &format!("more{n}")).map(|added| added.account.name))
+        })
+        .collect();
+    for thread in adding {
+        thread.join().unwrap().unwrap();
+    }
+    let mut all = names(paths);
+    all.sort();
+    assert_eq!(all, ["first", "more0", "more1", "more2", "more3"]);
+}
+
+#[test]
 fn accounts_add_order_marks_thresholds_remove() {
     let home = temp_home();
     let paths = &home.paths;

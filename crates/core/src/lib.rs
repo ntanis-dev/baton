@@ -13,6 +13,7 @@ pub mod hop;
 pub mod json;
 pub mod lines;
 pub mod names;
+pub mod oslock;
 pub mod paths;
 pub mod policy;
 pub mod poll;

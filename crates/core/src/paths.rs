@@ -91,6 +91,8 @@ pub struct Paths {
     pub logs: PathBuf,
     /// Scratch files.
     pub tmp: PathBuf,
+    /// The files Baton's locks are taken on ([`crate::oslock`]).
+    pub run: PathBuf,
     /// The shared base every profile links to (never signed in to by Baton).
     pub claude_dir: PathBuf,
     /// The seed of a new profile's `.claude.json` (never its identity, never its sign-in).
@@ -113,6 +115,7 @@ pub fn baton_paths(home: impl Into<PathBuf>) -> Paths {
         backups: root.join("backups"),
         logs: root.join("logs"),
         tmp: root.join("tmp"),
+        run: root.join("run"),
         claude_dir: home.join(".claude"),
         claude_json: home.join(".claude.json"),
         root,

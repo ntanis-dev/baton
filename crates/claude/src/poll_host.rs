@@ -4,11 +4,14 @@
 //! instance: when it exits, nothing polls.
 //!
 //! The lease (`~/.baton/poll/lease.json`) is renewed every heartbeat (3 s); a lease whose process is
-//! gone, or not renewed for 10 s, is taken by another live instance (one at a time, through
-//! `lease.json.take`). A poll asked for by a command (`~/.baton/poll/requests/`) is taken by the holder
-//! at its next heartbeat; with no instance running, nothing polls.
+//! gone, or not renewed for 10 s, is taken by another live instance, one at a time (under the lock
+//! `~/.baton/run/poll-take.lock`). The heartbeat stays the measure of who polls, and not a lock held
+//! for as long as an instance runs: an instance that is stopped (suspended in its terminal) would keep
+//! such a lock and nobody would poll, while its lease simply goes stale. A poll asked for by a command
+//! (`~/.baton/poll/requests/`) is taken by the holder at its next heartbeat; with no instance running,
+//! nothing polls.
 
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -18,8 +21,9 @@ use std::time::Duration;
 use baton_core::claude_path::Launcher;
 use baton_core::clock::{Ms, iso, now_ms};
 use baton_core::env::Env;
-use baton_core::fsutil::{is_alive, mtime_ms, read_json, remove_file, write_json_atomic};
+use baton_core::fsutil::{is_alive, read_json, remove_file, write_json_atomic};
 use baton_core::json::Get;
+use baton_core::oslock::OsLock;
 use baton_core::paths::Paths;
 use baton_core::poll::{
     HEARTBEAT_MS, LEASE_STALE_MS, Lease, lease_file, lease_live, poll_dir, read_lease, request_dir,
@@ -232,33 +236,19 @@ impl Core {
         if lease_live(lease.as_ref(), now, self.alive.as_ref(), self.stale_ms) {
             return false;
         }
-        // Taking a free or stale lease: one instance at a time.
+        // Taking a free or stale lease: one instance at a time. An instance that dies while taking it
+        // holds nothing any more.
         if fs::create_dir_all(poll_dir(&self.paths)).is_err() {
             return false;
         }
-        let mut guard = file.clone().into_os_string();
-        guard.push(".take");
-        let guard = std::path::PathBuf::from(guard);
-        if OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&guard)
-            .is_err()
-        {
-            // A guard left by an instance that died while taking the lease.
-            if mtime_ms(&guard).is_some_and(|made| now_ms() - made > self.stale_ms) {
-                let _ = remove_file(&guard);
-            }
+        let Ok(Some(_taking)) = OsLock::try_take(&self.paths.run.join("poll-take.lock")) else {
+            return false;
+        };
+        let again = read_lease(&self.paths);
+        if !mine(&again) && lease_live(again.as_ref(), now, self.alive.as_ref(), self.stale_ms) {
             return false;
         }
-        let again = read_lease(&self.paths);
-        let taken = if !mine(&again) && lease_live(again.as_ref(), now, self.alive.as_ref(), self.stale_ms) {
-            false
-        } else {
-            write_json_atomic(&file, &record(iso(now))).is_ok()
-        };
-        let _ = remove_file(&guard);
-        taken
+        write_json_atomic(&file, &record(iso(now))).is_ok()
     }
 
     /// The polls commands asked for, oldest first, one per account: (account, reason).

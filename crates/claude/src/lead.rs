@@ -23,6 +23,7 @@ use baton_core::env::Env;
 use baton_core::format::NO_ACCOUNTS;
 use baton_core::fsutil::{append_json_line, random_hex, read_json, write_json_atomic};
 use baton_core::json::{Get, Object, is_truthy};
+use baton_core::oslock::OsLock;
 use baton_core::paths::{Paths, profile_env};
 use baton_core::policy::{
     AccountState, Decision, SessionFacts, TurnEnd, WaitDecision, burn_rate, decide_turn_end, decide_wait,
@@ -30,8 +31,8 @@ use baton_core::policy::{
 };
 use baton_core::prompts::{continue_prompt, hop_line, stay_prompt, wait_line};
 use baton_core::sessions::{
-    Lock, acquire_lock, prune_sessions, read_session_file, read_turn_samples, release_lock, remove_wrapper,
-    valid_id, wrapper_file, wrapper_session_file,
+    Lock, SessionLock, acquire_lock, hold_wrapper, prune_sessions, read_session_file, read_turn_samples,
+    remove_wrapper, valid_id, wrapper_file, wrapper_session_file,
 };
 use baton_core::state::{Want, load_snapshot};
 use baton_core::term::{Terminal, notice, terminal_for};
@@ -257,6 +258,13 @@ fn label_of(paths: &Paths, id: &str) -> String {
     name_of(&load_config(paths), id)
 }
 
+/// The process of a lock's holder, for telling the operator; `?` when its record does not say.
+fn pid_of(holder: &Value) -> String {
+    holder
+        .int("pid")
+        .map_or_else(|| "?".to_owned(), |pid| pid.to_string())
+}
+
 /// A local time of day, `15:20:00`.
 fn time_of(at: Ms) -> String {
     let at = local(at);
@@ -377,6 +385,14 @@ pub struct Lead {
     wrapper: String,
     /// The conversation, once known.
     session_id: Option<String>,
+    /// The conversation's lock, while this wrapper drives it.
+    session_lock: Option<SessionLock>,
+    /// The lock that says this wrapper runs.
+    running: Option<OsLock>,
+    /// Whether another wrapper drives the conversation: this one then decides nothing about it.
+    held_elsewhere: bool,
+    /// What to tell the operator, once claude is gone, about a conversation another wrapper drove.
+    held_note: Option<String>,
     /// The account the conversation runs on.
     account: Option<String>,
     /// The claude this wrapper started: the pid its hooks report.
@@ -455,6 +471,10 @@ impl Lead {
             parsed,
             wrapper: format!("{}-{}", std::process::id(), random_hex(4)),
             session_id,
+            session_lock: None,
+            running: None,
+            held_elsewhere: false,
+            held_note: None,
             account: None,
             claude_pid: None,
             claude_seen: false,
@@ -590,11 +610,14 @@ impl Lead {
         };
         self.signals.ignore(names);
         self.started_at = Some(self.time());
+        self.running = hold_wrapper(&self.paths, &self.wrapper);
         let code = self.main();
         self.signals.restore(names);
-        if let Some(id) = &self.session_id {
-            release_lock(&self.paths, id, &self.wrapper);
+        self.session_lock = None;
+        if let Some(note) = self.held_note.take() {
+            self.say(&note);
         }
+        self.running = None;
         remove_wrapper(&self.paths, &self.wrapper);
         // The poll goes with the wrapper: its lease, and a read in progress.
         if let Some(host) = self.poll_host.take() {
@@ -659,17 +682,19 @@ impl Lead {
             return 130;
         }
         if let Some(id) = self.session_id.clone() {
-            let lock = acquire_lock(&self.paths, &id, &self.lock_owner(&account));
-            if lock != Lock::Taken {
-                let pid = match &lock {
-                    Lock::Held(holder) => holder.int("pid").map(|pid| pid.to_string()),
-                    _ => None,
-                };
-                self.say(&format!(
-                    "baton: conversation {id} is already running under baton (pid {}); one conversation runs in one process at a time.",
-                    pid.as_deref().unwrap_or("?")
-                ));
-                return 1;
+            match acquire_lock(&self.paths, &id, &self.lock_owner(&account)) {
+                Lock::Taken(lock) => self.session_lock = Some(lock),
+                Lock::Held(holder) => {
+                    self.say(&format!(
+                        "baton: conversation {id} is already running under baton (pid {}); one conversation runs in one process at a time.",
+                        pid_of(&holder)
+                    ));
+                    return 1;
+                }
+                // No lock could be made at all (the folder, the file system): Claude Code still runs.
+                Lock::Failed(error) => {
+                    self.log("session lock failed", json!({ "session": id, "error": error }))
+                }
             }
         }
         let mut launch = Launch {
@@ -812,33 +837,53 @@ impl Lead {
         Outcome::Exit(status.as_ref().map_or(1, exit_code))
     }
 
-    /// Follows another conversation: the one the wrapper's own claude reported.
+    /// Follows another conversation: the one the wrapper's own claude reported. One that another
+    /// wrapper already drives is followed for what it is, and nothing is decided about it here.
     fn switch_session(&mut self, id: &str) {
         if self.session_id.as_deref() == Some(id) {
             return;
         }
-        if let Some(previous) = &self.session_id {
-            release_lock(&self.paths, previous, &self.wrapper);
-        }
+        // The previous conversation is free for another wrapper.
+        self.session_lock = None;
+        self.held_elsewhere = false;
         let account = self.account.clone().unwrap_or_default();
         match acquire_lock(&self.paths, id, &self.lock_owner(&account)) {
-            Lock::Taken => {}
+            Lock::Taken(lock) => self.session_lock = Some(lock),
             Lock::Held(holder) => {
+                self.held_elsewhere = true;
+                self.held_note = Some(format!(
+                    "baton: conversation {id} was already running under another baton (pid {}); that one moves it between accounts, this one left it alone.",
+                    pid_of(&holder)
+                ));
                 self.log(
                     "session lock held elsewhere",
                     json!({ "session": id, "holder": holder }),
                 );
             }
             Lock::Failed(error) => {
-                self.log(
-                    "session lock held elsewhere",
-                    json!({ "session": id, "error": error }),
-                );
+                self.log("session lock failed", json!({ "session": id, "error": error }));
             }
         }
         let previous = self.session_id.replace(id.to_owned());
         self.register(json!({}));
         self.log("session", json!({ "session": id, "previous": previous }));
+    }
+
+    /// Asks again for the lock of a conversation another wrapper drove: that wrapper may be gone.
+    /// What happened in the conversation meanwhile was not this wrapper's to act on.
+    fn claim(&mut self, id: &str) -> bool {
+        let account = self.account.clone().unwrap_or_default();
+        let Lock::Taken(lock) = acquire_lock(&self.paths, id, &self.lock_owner(&account)) else {
+            return false;
+        };
+        self.session_lock = Some(lock);
+        self.held_elsewhere = false;
+        self.held_note = None;
+        let now = self.time();
+        self.last_turn_at = self.last_turn_at.max(now);
+        self.last_hop_at = self.last_hop_at.max(now);
+        self.log("session lock taken", json!({ "session": id }));
+        true
     }
 
     /// Whether the session mapping was written by the claude this wrapper started.
@@ -877,6 +922,9 @@ impl Lead {
             self.switch_session(session);
         }
         let id = self.session_id.clone()?;
+        if self.held_elsewhere && !self.claim(&id) {
+            return None;
+        }
         let read = |name: &str| read_session_file(&self.paths, &id, name).unwrap_or(Value::Null);
         let mut turn = read("turn.json");
         let hop = read("hop.json");

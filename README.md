@@ -117,6 +117,9 @@ and conversations are the same files for every account, and Baton keeps the rest
 - **A new account starts with everything** the others have, except the sign-in.
 - **Nothing you set is written over silently.** When two accounts changed the same setting in different ways, Baton
   keeps both and asks: at the next `baton` start (press the number of the one to keep) or with `baton sync`.
+- **One account cannot take back what you granted.** A folder's trust, an allowed tool or a notice you already answered
+  stays on every account when one of them loses it (Claude Code starting its onboarding over, say): that account gets
+  it back. It is gone only once no account holds it any more.
 
 What is never shared: who an account is (its sign-in and identity), and Claude Code's own caches and counters.
 `~/.claude.json`, plain Claude Code's own file, is only read: what you change there reaches your accounts, never the
@@ -161,6 +164,9 @@ Set `NO_COLOR` to drop the colors, `BATON_GLYPHS=plain` for the classic Windows 
   in `~/.baton/accounts/<id>`. Its hooks and status line do nothing in plain `claude`.
 - **The status line, hooks and `/hop` reach `~/.claude` only through `baton install`**, which shows what it will do,
   keeps a backup, and is undone by `baton uninstall`.
+- **One Baton moves a conversation.** The `baton` that started a conversation is the one that moves it. If you
+  `/resume` into it from a second `baton` session, that one follows along and leaves the hops to the first, and
+  tells you so when it ends. The claim is a lock the system lets go of the moment a `baton` ends, however it ends.
 - **Claude is not told your accounts.** The note it gets after a move and the answer `/hop` gives it say what
   happened and why, never which account. The names are on your terminal, in Baton's own lines. One thing Baton cannot
   hide: the profile folder Claude Code runs in is `~/.baton/accounts/<id>`, and the id is made from the name.

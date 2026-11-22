@@ -13,6 +13,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -22,6 +23,7 @@ use crate::clock::{HOUR, MINUTE, Ms, iso, local, local_ms, parse_ms};
 use crate::config::loose_f64;
 use crate::fsutil::{append_json_line, read_json, read_json_as, write_json_atomic};
 use crate::json::{Get, Object, lenient, ser_num, ser_opt_num};
+use crate::oslock::OsLock;
 use crate::paths::{Paths, is_account_id};
 use crate::window::{Limit, PerWindow, WINDOWS, Window};
 
@@ -268,6 +270,9 @@ impl RecordOptions {
     }
 }
 
+/// How long a reading waits for another process that is recording one for the same account.
+const RECORD_WAIT: Duration = Duration::from_millis(250);
+
 /// What [`record_reading`] did.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Recorded {
@@ -285,6 +290,11 @@ pub struct Recorded {
 /// came from (source: `statusline` from a session, `poll` from the usage poller) and when (readAt). A
 /// poll also brings the plan's other meters (limits, e.g. a model's own weekly limit) and the
 /// extra-usage spend; a status line reading keeps the last ones.
+///
+/// Every session's status line and the poller record here, so one process at a time reads the stored
+/// reading and writes the next: what another wrote in between would be lost otherwise. A status line
+/// that only repeats what a poll read leaves the poll's reading as it is: the status line shows what
+/// its session last heard, which may be older than the poll.
 pub fn record_reading(
     paths: &Paths,
     account: &str,
@@ -302,6 +312,10 @@ pub fn record_reading(
         limits,
         extra_usage,
     } = options;
+    // The wait is short, and a lock that cannot be had never stops a reading from being recorded.
+    let _lock = OsLock::take(&paths.run.join(format!("usage-{account}.lock")), RECORD_WAIT)
+        .ok()
+        .flatten();
     let previous = read_reading(paths, account);
     let before = |window: Window| previous.as_ref().and_then(|p| p.window(window));
     let polled = limits.is_some();
@@ -336,6 +350,8 @@ pub fn record_reading(
         });
         if !same {
             changed.push(window);
+        } else if source != "poll" && before(window).is_some_and(|b| b.source.as_deref() == Some("poll")) {
+            continue;
         }
         let stored = WindowReading {
             used: sample.used,
@@ -990,6 +1006,34 @@ mod tests {
             Some("statusline")
         );
         assert_eq!(stored.seven_day.as_ref().unwrap().source.as_deref(), Some("poll"));
+        // A status line that repeats what the poll read leaves the poll's reading as it is; one that
+        // says more is the later word.
+        let weekly = |used: f64, at: Ms| {
+            record_reading(
+                &paths,
+                "work",
+                &PerWindow {
+                    five_hour: None,
+                    seven_day: sample(used, Some(T0 + DAY)),
+                },
+                RecordOptions::at(at),
+            );
+            read_reading(&paths, "work").unwrap().seven_day.unwrap()
+        };
+        let repeated = weekly(30.0, T0 + HOUR);
+        assert_eq!(
+            (repeated.source.as_deref(), repeated.read_at),
+            (Some("poll"), Some(iso(T0)))
+        );
+        let more = weekly(31.0, T0 + HOUR + 1000);
+        assert_eq!(
+            (more.source.as_deref(), more.read_at),
+            (Some("statusline"), Some(iso(T0 + HOUR + 1000)))
+        );
+        let stored = Reading {
+            seven_day: stored.seven_day.clone(),
+            ..read_reading(&paths, "work").unwrap()
+        };
         // The policy's weekly window is the model's own limit while it is the fuller one.
         let strict = strictest_weekly(Some(&stored), T0 + HOUR).unwrap();
         assert_eq!(
@@ -1000,6 +1044,50 @@ mod tests {
         let strict = strictest_weekly(Some(&stored), T0 + 2 * DAY).unwrap();
         assert_eq!((strict.used, strict.label), (30.0, None));
         assert_eq!(strictest_weekly(None, T0), None);
+    }
+
+    #[test]
+    fn readings_recorded_at_the_same_time_all_land() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = baton_paths(dir.path());
+        // A poll and a session's status line, over and over: each window keeps its latest value.
+        let record = |window: Window, source: &'static str| {
+            let paths = paths.clone();
+            std::thread::spawn(move || {
+                for n in 1..=40 {
+                    let value = sample(f64::from(n), Some(T0 + DAY));
+                    let reading = match window {
+                        Window::FiveHour => PerWindow {
+                            five_hour: value,
+                            seven_day: None,
+                        },
+                        Window::SevenDay => PerWindow {
+                            five_hour: None,
+                            seven_day: value,
+                        },
+                    };
+                    record_reading(
+                        &paths,
+                        "work",
+                        &reading,
+                        RecordOptions {
+                            source: source.into(),
+                            ..RecordOptions::at(T0 + Ms::from(n))
+                        },
+                    );
+                }
+            })
+        };
+        let both = [
+            record(Window::FiveHour, "statusline"),
+            record(Window::SevenDay, "poll"),
+        ];
+        for thread in both {
+            thread.join().unwrap();
+        }
+        let stored = read_reading(&paths, "work").unwrap();
+        assert_eq!(stored.five_hour.unwrap().used, 40.0);
+        assert_eq!(stored.seven_day.unwrap().used, 40.0);
     }
 
     #[test]

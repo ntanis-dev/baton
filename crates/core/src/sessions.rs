@@ -10,16 +10,20 @@
 //! sessions/<id>/compact.json SessionStart source=compact: { at }
 //! sessions/<id>/end.json     SessionEnd: { at, reason }
 //! sessions/<id>/hop.json     baton hop / the /hop command: { at, to, by }
-//! sessions/<id>/lock.json    the wrapper holding the session: { pid, wrapper, at, account }
+//! sessions/<id>/lock         the lock itself: held by the wrapper driving the session ([`crate::oslock`])
+//! sessions/<id>/lock.json    who holds it, for `baton hop` to find: { pid, wrapper, at, account }
 //! sessions/<id>/turns.jsonl  one line per turn end with the session's reading (cost estimates)
 //! wrappers/<wrapper>.json    a running wrapper: { pid, wrapper, account, session, startedAt, cwd, state,
 //!                              left, arrivedAt, endedWell } (the last three: its run of hops)
+//! wrappers/<wrapper>.lock    held by the wrapper for as long as it runs ([`crate::oslock`])
 //! wrappers/<wrapper>.session.json   SessionStart in a process the wrapper started: { session, at, source }
 //! ```
 
-use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::fs;
+use std::io;
 use std::path::PathBuf;
+use std::thread;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -28,7 +32,8 @@ use crate::fsutil::{
     append_json_line, is_alive, mtime_ms, read_json, read_json_lines, remove_file, remove_tree,
     write_json_atomic,
 };
-use crate::json::{Get, compact};
+use crate::json::Get;
+use crate::oslock::{OsLock, is_held};
 use crate::paths::{Paths, is_id};
 use crate::usage::TurnSample;
 
@@ -91,74 +96,104 @@ pub fn request_hop(paths: &Paths, id: &str, to: Option<&str>, by: &str, at: Ms) 
     )
 }
 
+/// A session's lock, held by the wrapper that drives it until this is dropped. Dropping it takes the
+/// holder's record away first, then lets the lock go.
+#[derive(Debug)]
+pub struct SessionLock {
+    /// `lock.json`, which names this holder.
+    record: PathBuf,
+    /// The wrapper that holds it.
+    wrapper: Option<String>,
+    /// The lock itself. Declared last: it goes after the record.
+    _lock: OsLock,
+}
+
+impl Drop for SessionLock {
+    fn drop(&mut self) {
+        if read_json(&self.record).is_some_and(|holder| holder.text("wrapper") == self.wrapper.as_deref()) {
+            let _ = remove_file(&self.record);
+        }
+    }
+}
+
 /// What came of asking for a session's lock.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub enum Lock {
-    /// The lock is the caller's.
-    Taken,
-    /// A live process holds it.
+    /// The lock is the caller's for as long as it keeps this.
+    Taken(SessionLock),
+    /// Another wrapper holds it: its record, or null when it has not written one yet.
     Held(Value),
     /// It could not be taken.
     Failed(String),
 }
 
-/// The pid of a lock's or a wrapper's record, when its process is alive.
+impl Lock {
+    /// The lock, when it was taken.
+    pub fn taken(self) -> Option<SessionLock> {
+        match self {
+            Lock::Taken(lock) => Some(lock),
+            _ => None,
+        }
+    }
+}
+
+/// Whether the process a record names is alive: what tells of a wrapper from before the locks were
+/// the operating system's, which holds none. A process id is given anew once its process is gone, so
+/// this is asked only where there is no lock to ask.
 fn alive_pid(record: &Value) -> bool {
     record.int("pid").is_some_and(is_alive)
 }
 
-/// The per-session lock: one conversation runs in one process at a time. Exclusive create; a lock
-/// whose process is gone is taken over. `owner` is `{ pid, wrapper, at, account }`.
+/// The per-session lock: one wrapper drives a conversation at a time. The lock is the operating
+/// system's, so a wrapper that died holds nothing; `owner` (`{ pid, wrapper, at, account }`) is written
+/// beside it for `baton hop` to find the wrapper.
 pub fn acquire_lock(paths: &Paths, id: &str, owner: &Value) -> Lock {
-    let Some(target) = file(paths, id, "lock.json") else {
+    let (Some(target), Some(record)) = (file(paths, id, "lock"), file(paths, id, "lock.json")) else {
         return Lock::Failed(format!("Not a session id: {id}"));
     };
-    if let Some(dir) = target.parent()
-        && let Err(error) = fs::create_dir_all(dir)
-    {
-        return Lock::Failed(error.to_string());
+    if let Some(holder) = earlier_holder(paths, id) {
+        return Lock::Held(holder);
     }
-    for _ in 0..3 {
-        match OpenOptions::new().write(true).create_new(true).open(&target) {
-            Ok(mut out) => {
-                return match out.write_all((compact(owner) + "\n").as_bytes()) {
-                    Ok(()) => Lock::Taken,
+    // Someone only asking whether it is held ([`lock_holder`]) has it for an instant: ask again.
+    for attempt in 0..3 {
+        match OsLock::try_take(&target) {
+            Ok(Some(lock)) => {
+                return match write_json_atomic(&record, owner) {
+                    Ok(()) => Lock::Taken(SessionLock {
+                        record,
+                        wrapper: owner.text("wrapper").map(str::to_owned),
+                        _lock: lock,
+                    }),
                     Err(error) => Lock::Failed(error.to_string()),
                 };
             }
-            Err(error) if error.kind() != io::ErrorKind::AlreadyExists => {
-                return Lock::Failed(error.to_string());
-            }
-            Err(_) => {
-                let holder = read_json(&target);
-                if let Some(holder) = holder {
-                    if holder.is_object() && holder.at("wrapper") == owner.at("wrapper") {
-                        return Lock::Taken;
-                    }
-                    if alive_pid(&holder) {
-                        return Lock::Held(holder);
-                    }
-                }
-                let _ = remove_file(&target);
-            }
+            Ok(None) if attempt < 2 => thread::sleep(Duration::from_millis(15)),
+            Ok(None) => {}
+            Err(error) => return Lock::Failed(error.to_string()),
         }
     }
-    Lock::Failed("could not take the lock".to_owned())
+    Lock::Held(read_json(&record).unwrap_or(Value::Null))
 }
 
-/// Lets go of a session's lock when `wrapper` holds it.
-pub fn release_lock(paths: &Paths, id: &str, wrapper: &str) {
-    let Some(target) = file(paths, id, "lock.json") else {
-        return;
-    };
-    if read_json(&target).is_some_and(|holder| holder.text("wrapper") == Some(wrapper)) {
-        let _ = remove_file(&target);
+/// The record of a wrapper from before the lock was the operating system's, while it runs: it wrote
+/// who it is and holds no lock, so the session has a record and no lock file.
+fn earlier_holder(paths: &Paths, id: &str) -> Option<Value> {
+    if file(paths, id, "lock")?.exists() {
+        return None;
     }
+    read_session_file(paths, id, "lock.json").filter(alive_pid)
 }
 
-/// The live holder of a session's lock.
+/// Whether a wrapper holds the session's lock now.
+pub fn is_locked(paths: &Paths, id: &str) -> bool {
+    file(paths, id, "lock").is_some_and(|target| is_held(&target)) || earlier_holder(paths, id).is_some()
+}
+
+/// The holder of a session's lock: its record, while it holds the lock.
 pub fn lock_holder(paths: &Paths, id: &str) -> Option<Value> {
-    read_session_file(paths, id, "lock.json").filter(alive_pid)
+    is_locked(paths, id)
+        .then(|| read_session_file(paths, id, "lock.json"))
+        .flatten()
 }
 
 /// A running wrapper's record.
@@ -169,6 +204,33 @@ pub fn wrapper_file(paths: &Paths, wrapper: &str) -> PathBuf {
 /// The session a process the wrapper started reported.
 pub fn wrapper_session_file(paths: &Paths, wrapper: &str) -> PathBuf {
     paths.wrappers.join(format!("{wrapper}.session.json"))
+}
+
+/// The lock a wrapper holds for as long as it runs.
+fn wrapper_lock_file(paths: &Paths, wrapper: &str) -> PathBuf {
+    paths.wrappers.join(format!("{wrapper}.lock"))
+}
+
+/// Takes the lock that says a wrapper runs; it is kept until the wrapper ends. None when it could not
+/// be taken: the wrapper then counts as running for as long as its process is there.
+pub fn hold_wrapper(paths: &Paths, wrapper: &str) -> Option<OsLock> {
+    OsLock::try_take(&wrapper_lock_file(paths, wrapper))
+        .ok()
+        .flatten()
+}
+
+/// Whether the wrapper of a record runs: it holds its lock. One with no lock (it could not take one,
+/// or is from before there was one) runs while its process is alive.
+fn wrapper_runs(paths: &Paths, record: &Value) -> bool {
+    let lock = record
+        .text("wrapper")
+        .filter(|wrapper| valid_id(wrapper))
+        .map(|wrapper| wrapper_lock_file(paths, wrapper))
+        .filter(|lock| lock.exists());
+    match lock {
+        Some(lock) => is_held(&lock),
+        None => alive_pid(record),
+    }
 }
 
 /// The wrappers that run now.
@@ -185,14 +247,15 @@ pub fn list_wrappers(paths: &Paths) -> Vec<Value> {
         .iter()
         .filter(|name| name.ends_with(".json") && !name.ends_with(".session.json"))
         .filter_map(|name| read_json(&paths.wrappers.join(name)))
-        .filter(alive_pid)
+        .filter(|record| wrapper_runs(paths, record))
         .collect()
 }
 
-/// Forgets a wrapper.
+/// Forgets a wrapper (which has let go of its lock: nobody else ever takes that one).
 pub fn remove_wrapper(paths: &Paths, wrapper: &str) {
     let _ = remove_file(&wrapper_file(paths, wrapper));
     let _ = remove_file(&wrapper_session_file(paths, wrapper));
+    let _ = remove_file(&wrapper_lock_file(paths, wrapper));
 }
 
 /// A session seen recently that has not ended.
@@ -288,7 +351,7 @@ pub fn prune_sessions(paths: &Paths, now: Ms, days: i64) -> usize {
         let Some(mtime) = mtime_ms(&dir) else {
             continue;
         };
-        if now - mtime < days * DAY || lock_holder(paths, &id).is_some() {
+        if now - mtime < days * DAY || is_locked(paths, &id) {
             continue;
         }
         if remove_tree(&dir).is_ok() {
@@ -350,25 +413,44 @@ mod tests {
     fn one_wrapper_holds_a_session() {
         let dir = tempfile::tempdir().unwrap();
         let paths = baton_paths(dir.path());
+        assert!(!is_locked(&paths, ID));
         let owner = json!({ "pid": me(), "wrapper": "w1", "account": "work" });
-        assert_eq!(acquire_lock(&paths, ID, &owner), Lock::Taken);
-        assert_eq!(
-            acquire_lock(&paths, ID, &owner),
-            Lock::Taken,
-            "its own lock again"
-        );
+        let held = acquire_lock(&paths, ID, &owner).taken().unwrap();
         let other = json!({ "pid": me(), "wrapper": "w2", "account": "work" });
-        assert_eq!(acquire_lock(&paths, ID, &other), Lock::Held(owner.clone()));
-        assert_eq!(lock_holder(&paths, ID), Some(owner));
-        release_lock(&paths, ID, "w2");
-        assert!(lock_holder(&paths, ID).is_some(), "only its holder lets it go");
-        release_lock(&paths, ID, "w1");
+        match acquire_lock(&paths, ID, &other) {
+            Lock::Held(holder) => assert_eq!(holder, owner),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(lock_holder(&paths, ID), Some(owner.clone()));
+        drop(held);
         assert_eq!(lock_holder(&paths, ID), None);
-        // A lock whose process is gone is taken over.
-        write_session_file(&paths, ID, "lock.json", &json!({ "pid": 0, "wrapper": "dead" })).unwrap();
+        assert!(!session_dir(&paths, ID).unwrap().join("lock.json").exists());
+        // What a wrapper that died left behind holds nothing, whatever its record says.
+        write_session_file(
+            &paths,
+            ID,
+            "lock.json",
+            &json!({ "pid": me(), "wrapper": "dead" }),
+        )
+        .unwrap();
         assert_eq!(lock_holder(&paths, ID), None);
-        assert_eq!(acquire_lock(&paths, ID, &other), Lock::Taken);
+        // A wrapper from before the lock was the system's wrote its record only: it holds the session
+        // while its process is there.
+        let before = "0a1b2c3d-0000-4000-8000-000000000001";
+        let earlier = json!({ "pid": me(), "wrapper": "w0", "account": "work" });
+        write_session_file(&paths, before, "lock.json", &earlier).unwrap();
+        assert_eq!(lock_holder(&paths, before), Some(earlier.clone()));
+        assert!(matches!(acquire_lock(&paths, before, &other), Lock::Held(holder) if holder == earlier));
+        write_session_file(&paths, before, "lock.json", &json!({ "pid": 0, "wrapper": "w0" })).unwrap();
+        assert_eq!(lock_holder(&paths, before), None);
+        assert!(acquire_lock(&paths, before, &other).taken().is_some());
+        let taken = acquire_lock(&paths, ID, &other).taken().unwrap();
         assert_eq!(lock_holder(&paths, ID).unwrap()["wrapper"], "w2");
+        // A holder lets go of its own record only.
+        write_session_file(&paths, ID, "lock.json", &owner).unwrap();
+        drop(taken);
+        assert!(session_dir(&paths, ID).unwrap().join("lock.json").exists());
+        assert!(!is_locked(&paths, ID));
         assert!(matches!(acquire_lock(&paths, "no/id", &other), Lock::Failed(_)));
     }
 
@@ -394,6 +476,20 @@ mod tests {
         remove_wrapper(&paths, "w1");
         assert!(list_wrappers(&paths).is_empty());
         assert!(!wrapper_session_file(&paths, "w1").exists());
+        // A wrapper holds its lock while it runs: its record alone says nothing once the lock is free,
+        // even when another process has its number by then.
+        let record = json!({ "pid": me(), "wrapper": "w2" });
+        write_json_atomic(&wrapper_file(&paths, "w2"), &record).unwrap();
+        let running = hold_wrapper(&paths, "w2").unwrap();
+        assert_eq!(list_wrappers(&paths), vec![record]);
+        drop(running);
+        assert!(list_wrappers(&paths).is_empty());
+        remove_wrapper(&paths, "w2");
+        assert!(
+            fs::read_dir(&paths.wrappers).unwrap().next().is_some(),
+            "the earlier `gone`"
+        );
+        assert!(!wrapper_lock_file(&paths, "w2").exists());
     }
 
     #[test]
@@ -440,10 +536,9 @@ mod tests {
         assert!(recent_sessions(&paths, now + 7 * HOUR, 6 * HOUR).is_empty());
         // Pruning: nothing young goes; an old folder does, unless its lock is held.
         assert_eq!(prune_sessions(&paths, now, 30), 0);
-        assert_eq!(
-            acquire_lock(&paths, ID, &json!({ "pid": me(), "wrapper": "w1" })),
-            Lock::Taken
-        );
+        let _held = acquire_lock(&paths, ID, &json!({ "pid": me(), "wrapper": "w1" }))
+            .taken()
+            .unwrap();
         assert_eq!(prune_sessions(&paths, now + 31 * DAY, 30), 1);
         assert!(session_dir(&paths, ID).unwrap().exists());
         assert!(!session_dir(&paths, ended).unwrap().exists());

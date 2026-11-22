@@ -8,6 +8,7 @@
 
 use std::io;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use baton_core::config::{
     Account, By, Config, MARKS, Mark, check_policy_value, find_account, load_config_strict, loose_f64,
@@ -15,6 +16,7 @@ use baton_core::config::{
 };
 use baton_core::json::{Object, opt_num};
 use baton_core::names::{clean_name, id_from_name, name_problem, same_name};
+use baton_core::oslock::OsLock;
 use baton_core::paths::{Paths, profile_dir};
 use serde::{Serialize, Serializer};
 use serde_json::{Value, json};
@@ -47,10 +49,18 @@ fn invalid(message: impl Into<String>) -> AccountError {
     AccountError::Invalid(message.into())
 }
 
-/// config.json to change and save back: one that cannot be read stops the change instead of being
-/// saved over as an empty config.
-fn load_for_change(paths: &Paths) -> Result<Config, AccountError> {
-    load_config_strict(paths).map_err(|error| invalid(error.0))
+/// How long a change of config.json waits for another baton to finish its own.
+const CHANGE_WAIT: Duration = Duration::from_secs(5);
+
+/// config.json to change and save back, and the lock that makes this baton the only one changing it
+/// until the lock is dropped: two that read it together would each save over the other's change. A
+/// file that cannot be read stops the change instead of being saved over as an empty config.
+fn load_for_change(paths: &Paths) -> Result<(OsLock, Config), AccountError> {
+    let lock = OsLock::take(&paths.run.join("config.lock"), CHANGE_WAIT)?.ok_or_else(|| {
+        invalid("Another baton is changing the accounts or the policy; try again in a moment.")
+    })?;
+    let config = load_config_strict(paths).map_err(|error| invalid(error.0))?;
+    Ok((lock, config))
 }
 
 /// The place in the config of the account `key` names.
@@ -183,7 +193,7 @@ pub struct Added {
 
 /// Adds an account and links its profile.
 pub fn add_account(paths: &Paths, name: &str, options: &AddOptions) -> Result<Added, AccountError> {
-    let mut config = load_for_change(paths)?;
+    let (_lock, mut config) = load_for_change(paths)?;
     let name = check_name(&config, name, None)?;
     let account = Account {
         id: new_id(paths, &config, &name),
@@ -233,7 +243,7 @@ pub struct Renamed {
 /// A rename changes only the label: the id, the profile folder (which a running claude may use as
 /// CLAUDE_CONFIG_DIR), the files and the history stay, and everything shows the new name from then on.
 pub fn rename_account(paths: &Paths, key: &str, new_name: &str, by: By) -> Result<Renamed, AccountError> {
-    let mut config = load_for_change(paths)?;
+    let (_lock, mut config) = load_for_change(paths)?;
     let at = need(&config, key, by)?;
     let to = check_name(&config, new_name, Some(at))?;
     let account = &mut config.accounts[at];
@@ -259,7 +269,7 @@ pub struct Removed {
 /// Removing an account takes it out of Baton: never listed, picked, polled or launched under again.
 /// Its profile folder (with its sign-in) stays. The last account cannot go.
 pub fn remove_account(paths: &Paths, key: &str, by: By) -> Result<Removed, AccountError> {
-    let mut config = load_for_change(paths)?;
+    let (_lock, mut config) = load_for_change(paths)?;
     let at = need(&config, key, by)?;
     if config.accounts.len() == 1 {
         return Err(invalid(format!(
@@ -296,7 +306,7 @@ fn order_of(config: &Config) -> Order {
 
 /// New order: the accounts given first, in that order; the rest keep theirs.
 pub fn order_accounts<S: AsRef<str>>(paths: &Paths, keys: &[S], by: By) -> Result<Order, AccountError> {
-    let mut config = load_for_change(paths)?;
+    let (_lock, mut config) = load_for_change(paths)?;
     let first = keys
         .iter()
         .map(|key| need(&config, key.as_ref(), by))
@@ -317,7 +327,7 @@ pub fn order_accounts<S: AsRef<str>>(paths: &Paths, keys: &[S], by: By) -> Resul
 
 /// Moves an account to a place in the order (from 1).
 pub fn move_account(paths: &Paths, key: &str, position: &Value, by: By) -> Result<Order, AccountError> {
-    let mut config = load_for_change(paths)?;
+    let (_lock, mut config) = load_for_change(paths)?;
     let from = need(&config, key, by)?;
     let count = config.accounts.len();
     let at = place(position, count).ok_or_else(|| invalid(format!("A position is 1 to {count}.")))?;
@@ -355,7 +365,7 @@ pub fn set_account(
     changes: &AccountChanges,
     by: By,
 ) -> Result<Changed, AccountError> {
-    let mut config = load_for_change(paths)?;
+    let (_lock, mut config) = load_for_change(paths)?;
     let at = need(&config, key, by)?;
     let account = &mut config.accounts[at];
     if let Some(mark) = &changes.mark {
@@ -386,7 +396,7 @@ pub struct PolicySet {
 
 /// Changes policy settings: each value is checked and kept, null puts a setting back to its default.
 pub fn set_policy(paths: &Paths, changes: &Object) -> Result<PolicySet, AccountError> {
-    let mut config = load_for_change(paths)?;
+    let (_lock, mut config) = load_for_change(paths)?;
     for (key, value) in changes {
         if value.is_null() {
             config.policy.shift_remove(key);

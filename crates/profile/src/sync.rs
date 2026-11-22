@@ -15,9 +15,13 @@
 //!   for every participant, what Baton last saw there. A value that differs from what was last seen is
 //!   a change made there, and it goes to the others; a value that was only left behind takes the
 //!   agreed one. A lost entry of a list or of a map of servers is a removal, and goes to the others too.
-//! - **When two differ.** Counters and versions take the higher one; a grant (a folder's trust, a
-//!   notice already answered) stays granted. Anything else is a question for the operator: nobody's
-//!   value is written over until it is answered ([`take`]).
+//! - **What one account cannot take back.** A grant: a `has...` flag (a folder's trust, a notice
+//!   already answered), an item of an `allowed...` list, the count of a folder's entry. An account
+//!   that lost one (its onboarding starting over, say) gets it back from the others; it is gone only
+//!   when no participant holds it any more.
+//! - **When two differ.** Counters and versions take the higher one; a grant stays granted. Anything
+//!   else is a question for the operator: nobody's value is written over until it is answered
+//!   ([`take`]).
 //! - **When.** Whenever a profile is linked: an account added or signed in, `baton` starting, and a
 //!   conversation moving to another account, so what was set on the way is there on arrival. Only the
 //!   profile being linked is written; the others catch up when their turn comes.
@@ -26,15 +30,15 @@
 //! file afresh), not as the operator removing everything: it gets the agreed settings back.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{self, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use baton_core::clock::{Ms, iso};
 use baton_core::config::{Config, effective_policy};
-use baton_core::fsutil::{mtime_ms, read_json_as, remove_file, sleep_ms, write_json_atomic};
+use baton_core::fsutil::{read_json_as, write_json_atomic};
 use baton_core::json::{Object, compact};
+use baton_core::oslock::OsLock;
 use baton_core::paths::{Paths, global_config_file};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -49,9 +53,6 @@ pub const HOME: &str = "~";
 /// What is never kept in step, whatever the config says: who the account is, and the folders' entries
 /// as a whole (their settings are kept in step key by key).
 const NEVER: [&str; 4] = ["oauthAccount", "userID", "machineID", "projects"];
-
-/// A lock older than this belongs to a baton that died.
-const LOCK_STALE_MS: i64 = 10_000;
 
 /// How long a sync waits for another baton to finish its own.
 const LOCK_WAIT: Duration = Duration::from_secs(3);
@@ -126,6 +127,12 @@ impl Leaf {
     /// folder's entry, and the `has...` flags.
     fn grants(&self) -> bool {
         self.project.is_some() || self.key.starts_with("has")
+    }
+
+    /// Whether it is granted for good as far as one participant goes: a `has...` flag, or an item of an
+    /// `allowed...` list. It is taken back only when nobody holds it any more.
+    fn one_way(&self) -> bool {
+        self.key.starts_with("has") || (self.item.is_some() && self.key.starts_with("allowed"))
     }
 
     /// The leaf in words for the operator: `theme`, `mcpServers: github`, `E:/work · allowedTools`.
@@ -392,40 +399,11 @@ struct State {
     pending: Vec<Question>,
 }
 
-/// The lock a sync holds: one baton at a time reads and writes `sync.json`.
-#[derive(Debug)]
-struct Lock(PathBuf);
-
-impl Lock {
-    /// Takes the lock, waiting up to `wait` for another baton; None when it is still held then.
-    fn take(paths: &Paths, wait: Duration) -> Option<Lock> {
-        let file = paths.root.join("sync.lock");
-        let _ = fs::create_dir_all(&paths.root);
-        let started = Instant::now();
-        loop {
-            match OpenOptions::new().write(true).create_new(true).open(&file) {
-                Ok(_) => return Some(Lock(file)),
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                    let age = mtime_ms(&file).map(|at| baton_core::clock::now_ms() - at);
-                    if age.is_none_or(|age| age > LOCK_STALE_MS) {
-                        let _ = remove_file(&file);
-                        continue;
-                    }
-                }
-                Err(_) => return None,
-            }
-            if started.elapsed() >= wait {
-                return None;
-            }
-            sleep_ms(25);
-        }
-    }
-}
-
-impl Drop for Lock {
-    fn drop(&mut self) {
-        let _ = remove_file(&self.0);
-    }
+/// The lock a sync holds: one baton at a time reads and writes `sync.json`. Waits up to `wait` for
+/// another baton; None when it still syncs then. The lock is the operating system's, so a baton that
+/// died holds none, and one that takes long keeps its own.
+fn lock(paths: &Paths, wait: Duration) -> Option<OsLock> {
+    OsLock::take(&paths.run.join("sync.lock"), wait).ok().flatten()
 }
 
 /// One participant, as it is on disk now.
@@ -500,6 +478,21 @@ fn settle(theirs: Option<&Value>, agreed: Option<&Value>) -> Option<Side> {
         return Some(if a > b { Side::Theirs } else { Side::Agreed });
     }
     None
+}
+
+/// Whether a change one participant made takes back something granted: a grant that is gone there
+/// ([`Leaf::one_way`]), or the count of a folder's entry that went down.
+fn takes_back(id: &str, theirs: Option<&Value>, agreed: Option<&Value>) -> bool {
+    let Some(leaf) = Leaf::parse(id) else {
+        return false;
+    };
+    match (theirs, agreed) {
+        (None, Some(_)) => leaf.one_way(),
+        (Some(theirs), Some(agreed)) => {
+            leaf.grants() && matches!((theirs.as_f64(), agreed.as_f64()), (Some(a), Some(b)) if a < b)
+        }
+        _ => false,
+    }
 }
 
 /// Which profiles a sync writes.
@@ -587,9 +580,14 @@ fn collect(state: &mut State, party: &Party, report: &mut SyncReport) -> BTreeSe
             remember(&mut next);
             continue;
         }
-        // The others did not move meanwhile: the change stands. Otherwise both moved.
+        // The others did not move meanwhile: the change stands, unless it takes back a grant, which
+        // no participant does alone. Otherwise both moved.
         let side = if last == agreed_mark.as_ref() {
-            Some(Side::Theirs)
+            Some(if takes_back(id, theirs, agreed) {
+                Side::Agreed
+            } else {
+                Side::Theirs
+            })
         } else {
             settle(theirs, agreed)
         };
@@ -705,7 +703,7 @@ fn sync_within(
     wait: Duration,
 ) -> io::Result<SyncReport> {
     let mut report = SyncReport::default();
-    let Some(_lock) = Lock::take(paths, wait) else {
+    let Some(_lock) = lock(paths, wait) else {
         report.busy = true;
         return Ok(report);
     };
@@ -729,6 +727,13 @@ fn sync_within(
         if !own.is_empty() {
             blocked.insert(party.id.clone(), own);
         }
+    }
+    // A grant nobody holds any more was taken back everywhere: only then is it gone.
+    if all.iter().all(|party| !party.unreadable) {
+        state.base.retain(|id, _| {
+            !Leaf::parse(id).is_some_and(|leaf| leaf.one_way())
+                || all.iter().any(|party| party.leaves.contains_key(id))
+        });
     }
     let mut applied: BTreeSet<&str> = BTreeSet::new();
     for party in all.iter().filter(|party| party.id != HOME && !party.unreadable) {
@@ -801,7 +806,7 @@ pub fn read_questions(paths: &Paths) -> Vec<Question> {
 /// becomes the one every account has. Then every profile is brought in step.
 pub fn take(paths: &Paths, config: &Config, leaves: &[String], who: &str, now: Ms) -> io::Result<SyncReport> {
     {
-        let Some(_lock) = Lock::take(paths, LOCK_WAIT) else {
+        let Some(_lock) = lock(paths, LOCK_WAIT) else {
             return Ok(SyncReport {
                 busy: true,
                 ..SyncReport::default()
@@ -847,7 +852,7 @@ pub fn take(paths: &Paths, config: &Config, leaves: &[String], who: &str, now: M
 
 /// Forgets what Baton saw in a removed account's profile.
 pub fn forget_account(paths: &Paths, id: &str) -> io::Result<()> {
-    let Some(_lock) = Lock::take(paths, LOCK_WAIT) else {
+    let Some(_lock) = lock(paths, LOCK_WAIT) else {
         return Ok(());
     };
     let Some(mut state) = read_json_as::<State>(&sync_file(paths)) else {
@@ -868,6 +873,7 @@ mod tests {
     use baton_core::config::normalize_config;
     use baton_core::paths::baton_paths;
     use serde_json::json;
+    use std::fs;
 
     const T0: Ms = 1_780_000_000_000;
 
@@ -1053,19 +1059,15 @@ mod tests {
             fs::read_to_string(global_config_file(&paths, "c")).unwrap(),
             c_before
         );
-        // A tool taken back on b is taken back on c and a when their turn comes.
-        change(&paths, "b", |b| {
-            b["projects"]["/work"]["allowedTools"] = json!([])
-        });
+        // A server taken out on b is taken out on c and a when their turn comes.
+        change(&paths, "b", |b| b["mcpServers"] = json!({}));
         sync_settings(&paths, &config, Apply::One("c"), T0 + 2).unwrap();
         let c = profile(&paths, "c");
         assert_eq!(c["theme"], "light");
-        assert!(c["projects"]["/work"].get("allowedTools").is_none());
+        assert_eq!(c["mcpServers"], json!({}));
+        assert_eq!(c["projects"]["/work"]["allowedTools"], json!(["Read"]));
         sync_settings(&paths, &config, Apply::One("a"), T0 + 3).unwrap();
-        assert_eq!(
-            profile(&paths, "a")["projects"]["/work"]["allowedTools"],
-            json!([])
-        );
+        assert_eq!(profile(&paths, "a")["mcpServers"], json!({}));
         // What the home sets later reaches the accounts; the home itself still says dark for the theme.
         let mut home = load(&paths.claude_json).json().unwrap();
         home["verbose"] = json!(true);
@@ -1166,6 +1168,87 @@ mod tests {
     }
 
     #[test]
+    fn a_grant_one_account_lost_comes_back_and_is_gone_only_when_nobody_holds_it() {
+        let (_dir, paths, config) = home();
+        let granted = json!({
+            "hasTrustDialogAccepted": true, "allowedTools": ["Edit", "Read"], "projectOnboardingSeenCount": 4
+        });
+        put(
+            &paths.claude_json,
+            &json!({ "hasCompletedOnboarding": true, "projects": { "/w": granted } }),
+        );
+        all(&paths, &config);
+        // a's onboarding starts over: its flags are off again, a tool is gone, its count is lower.
+        change(&paths, "a", |a| {
+            a["hasCompletedOnboarding"] = json!(false);
+            a["projects"]["/w"] = json!({
+                "hasTrustDialogAccepted": false, "allowedTools": ["Read"], "projectOnboardingSeenCount": 1
+            });
+        });
+        // The conversation moves to b: nothing is taken from it.
+        let report = sync_settings(&paths, &config, Apply::One("b"), T0 + 1).unwrap();
+        assert!(
+            report.brought.is_empty() && report.written.is_empty(),
+            "{report:?}"
+        );
+        assert!(report.questions.is_empty());
+        assert_eq!(profile(&paths, "b")["projects"]["/w"], granted);
+        // When a's turn comes it has them again.
+        let report = sync_settings(&paths, &config, Apply::One("a"), T0 + 2).unwrap();
+        assert_eq!(
+            report.written,
+            vec![Written {
+                account: "a".into(),
+                settings: 4
+            }]
+        );
+        let a = profile(&paths, "a");
+        assert_eq!(a["hasCompletedOnboarding"], true);
+        assert_eq!(a["projects"]["/w"]["hasTrustDialogAccepted"], true);
+        assert_eq!(a["projects"]["/w"]["projectOnboardingSeenCount"], 4);
+        let mut tools: Vec<&str> = a["projects"]["/w"]["allowedTools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        tools.sort_unstable();
+        assert_eq!(tools, ["Edit", "Read"]);
+        // Taken back by all but one, it still stands; taken back by everyone, the home too, it is gone.
+        let take_back = |value: &mut Value| value["projects"]["/w"]["allowedTools"] = json!(["Read"]);
+        for id in ["a", "b"] {
+            change(&paths, id, take_back);
+        }
+        let mut home = load(&paths.claude_json).json().unwrap();
+        take_back(&mut home);
+        put(&paths.claude_json, &home);
+        all(&paths, &config);
+        assert_eq!(
+            profile(&paths, "a")["projects"]["/w"]["allowedTools"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        for id in ["a", "b", "c"] {
+            change(&paths, id, take_back);
+        }
+        all(&paths, &config);
+        all(&paths, &config);
+        for id in ["a", "b", "c"] {
+            assert_eq!(
+                profile(&paths, id)["projects"]["/w"]["allowedTools"],
+                json!(["Read"]),
+                "{id}"
+            );
+            assert_eq!(
+                profile(&paths, id)["projects"]["/w"]["hasTrustDialogAccepted"],
+                true
+            );
+        }
+    }
+
+    #[test]
     fn a_profile_that_was_reset_gets_its_settings_back_and_takes_nobodys_away() {
         let (_dir, paths, config) = home();
         put(
@@ -1229,7 +1312,7 @@ mod tests {
         let (_dir, paths, config) = home();
         put(&paths.claude_json, &json!({ "theme": "dark" }));
         all(&paths, &config);
-        let held = Lock::take(&paths, Duration::ZERO).unwrap();
+        let held = lock(&paths, Duration::ZERO).unwrap();
         let report = sync_within(&paths, &config, Apply::All, T0, Duration::ZERO).unwrap();
         assert!(report.busy && report.written.is_empty());
         drop(held);

@@ -633,6 +633,86 @@ fn the_status_line_draws_all_the_accounts_a_bar_each_and_the_mean_use_of_those_w
     assert_eq!(line(&[("COLUMNS", "12")]), "\u{257a}\u{2501}\u{2578} acct2");
 }
 
+/// A reading for an account whose plan has no 5-hour limit: its last poll listed the week alone, and
+/// what is left of an older 5-hour reading says nothing.
+fn weekly_only(now: Ms, week: f64) -> Value {
+    json!({
+        "five_hour": { "used": 0, "resetsAt": null, "readAt": iso(now - 2 * DAY), "source": "poll" },
+        "seven_day": { "used": week, "resetsAt": iso(now + 3 * DAY), "readAt": iso(now - MINUTE) },
+        "limits": [{
+            "kind": "weekly_all", "group": "weekly", "label": null, "used": week,
+            "resetsAt": iso(now + 3 * DAY), "severity": "normal", "active": false,
+        }],
+        "limitsAt": iso(now - HOUR)
+    })
+}
+
+#[test]
+fn a_plan_with_no_five_hour_limit_has_no_5h_in_the_status_line_nor_has_the_overall_part_when_no_account_has_one()
+ {
+    let home = four_accounts_home(); // acct1..acct4, this one is acct2
+    let paths = &home.paths;
+    let now = now_ms();
+    write_json(&paths.usage.join("acct1.json"), &weekly_only(now, 40.0));
+    write_json(&paths.usage.join("acct2.json"), &weekly_only(now, 60.0));
+    write_json(&paths.usage.join("acct3.json"), &reading_of(now, 60.0, 80.0));
+    // Claude Code reports the week alone on such a plan.
+    let input = json!({
+        "session_id": SID,
+        "rate_limits": { "seven_day": { "used_percentage": 63, "resets_at": seconds(now) + 86400 } }
+    });
+    let line = || text_of(handle_status_line(&input, &plain_env(paths, &[]), paths, now));
+    // This account has no 5h of its own. Together: the accounts that have the limit, acct3 and
+    // acct4 (never measured, so nothing says it has none).
+    assert_eq!(
+        line(),
+        "\u{257a}\u{2501}\u{2578} acct2 \u{b7} week 63% \u{2503} 5h \u{2585}\u{b7} 60% \u{b7} week \u{2584}\u{2585}\u{2587}\u{b7} 61%"
+    );
+    let config = load_config(paths);
+    let stored = read_reading(paths, "acct2");
+    let all = overall_usage(paths, &config, "acct2", stored.as_ref(), now);
+    let five: Vec<Option<f64>> = all
+        .cells
+        .five_hour
+        .as_deref()
+        .unwrap()
+        .iter()
+        .map(|c| c.used)
+        .collect();
+    assert_eq!(five, [Some(60.0), None]);
+    assert_eq!(all.means.five_hour, Some(60.0));
+    assert_eq!(all.cells.seven_day.as_deref().unwrap().len(), 4);
+    // No account with the limit has a reading: no 5h together either.
+    write_json(&paths.usage.join("acct3.json"), &weekly_only(now, 80.0));
+    assert_eq!(
+        line(),
+        "\u{257a}\u{2501}\u{2578} acct2 \u{b7} week 63% \u{2503} week \u{2584}\u{2585}\u{2587}\u{b7} 61%"
+    );
+    // No account has the limit at all.
+    write_json(&paths.usage.join("acct4.json"), &weekly_only(now, 20.0));
+    assert_eq!(
+        line(),
+        "\u{257a}\u{2501}\u{2578} acct2 \u{b7} week 63% \u{2503} week \u{2584}\u{2585}\u{2587}\u{2582} 51%"
+    );
+    let stored = read_reading(paths, "acct2");
+    let none = overall_usage(paths, &config, "acct2", stored.as_ref(), now);
+    assert!(none.cells.five_hour.as_deref().unwrap().is_empty());
+    assert_eq!(none.means.five_hour, None);
+    // A session that reports the window again has the limit after all.
+    let back = json!({
+        "session_id": SID,
+        "rate_limits": {
+            "five_hour": { "used_percentage": 42, "resets_at": seconds(now) + 3600 },
+            "seven_day": { "used_percentage": 63, "resets_at": seconds(now) + 86400 }
+        }
+    });
+    let shown = text_of(handle_status_line(&back, &plain_env(paths, &[]), paths, now));
+    assert!(
+        shown.starts_with("\u{257a}\u{2501}\u{2578} acct2 \u{b7} 5h 42% \u{b7} week 63%"),
+        "{shown}"
+    );
+}
+
 #[test]
 fn the_overall_bars_one_account_is_one_bar_and_with_no_one_to_compare_with_nothing_is_added() {
     let home = accounts_home(&["a", "b"]);

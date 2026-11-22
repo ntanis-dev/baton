@@ -171,7 +171,8 @@ Set `NO_COLOR` to drop the colors, `BATON_GLYPHS=plain` for the classic Windows 
   right after. If you had none, Baton shows its own: `╺━╸ Work · 5h 42% · week 63% ┃ 5h ▂▇▅ 31% · week ▃▅▇ 58%`.
   That is the account and its two windows, then one little bar per account (the fuller, the taller, red when it is
   over its threshold) and the average of them all. Your current account's bar is underlined and always live; the
-  other accounts' bars come from their last recorded usage, so they can lag a little.
+  other accounts' bars come from their last recorded usage, so they can lag a little. A plan with no 5-hour limit
+  has no `5h` of its own and no bar in the `5h` group, and when none of your accounts has one that group is left out.
   If you keep your own status line, Baton shows nothing of its own there. To add Baton's usage after yours, on the same
   line and only as far as the terminal is wide, run `baton policy --status-line-usage true` (or turn on Bar usage in
   the menu's Policy view). `false` turns it off again.

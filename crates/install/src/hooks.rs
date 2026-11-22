@@ -29,7 +29,7 @@ use baton_core::term::{Terminal, inherited_depth, make_terminal, render};
 use baton_core::text::{clean, round, width};
 use baton_core::theme::{GlyphSet, pick_glyphs};
 use baton_core::usage::{
-    LIMIT_ERRORS, Reading, RecordOptions, Rejection, Sample, infer_rejection, read_reading,
+    LIMIT_ERRORS, Reading, RecordOptions, Rejection, Sample, infer_rejection, no_five_hour, read_reading,
     reading_from_status_line, record_event, record_reading, record_rejection,
 };
 use baton_core::window::{PerWindow, WINDOWS, Window};
@@ -585,15 +585,17 @@ pub struct Overall {
     pub count: usize,
     /// The mean use per window of the accounts that have a reading; None when none has.
     pub means: PerWindow<Option<f64>>,
-    /// Per window, one cell per account in order; None when the cells are not known.
+    /// Per window, one cell per account that has that limit, in order; None when the cells are not
+    /// known.
     pub cells: PerWindow<Option<Vec<Cell>>>,
 }
 
 /// Every account together: how many there are, the mean 5-hour and the mean weekly use of those that
 /// have a reading (a window past its reset counts as 0 used), and per window one cell per account in
-/// order (used None when it was never measured). This session's account is read from `reading`, the
-/// one this very status line run was given, so the overall figure is only as old as the other
-/// accounts' stored readings.
+/// order (used None when it was never measured). An account whose plan has no 5-hour limit has no
+/// cell in that window and no part in its mean: when no account has one, the window is empty and the
+/// status line leaves it out. This session's account is read from `reading`, the one this very status
+/// line run was given, so the overall figure is only as old as the other accounts' stored readings.
 pub fn overall_usage(
     paths: &Paths,
     config: &Config,
@@ -622,6 +624,9 @@ pub fn overall_usage(
             .accounts
             .iter()
             .zip(&readings)
+            .filter(|(_, reading)| {
+                !(window == Window::FiveHour && reading.as_ref().is_some_and(no_five_hour))
+            })
             .map(|(a, reading)| {
                 let limit = thresholds(a, &policy)[window];
                 let stored = reading.as_ref().and_then(|r| r.window(window));
@@ -686,8 +691,9 @@ impl Default for LineOptions<'_> {
 /// ╺━╸ acct2 · 5h 42% · week 63% ┃ 5h ▂▇▅▃ 31% · week ▃▅▇▅ 58%
 /// ```
 ///
-/// A narrow terminal drops the overall part first, then the windows. `term` decides the glyphs and
-/// colours (plain text when it is not styled).
+/// A plan with no 5-hour limit has no `5h` of its own, and when no account has one the overall part
+/// has none either. A narrow terminal drops the overall part first, then the windows. `term` decides
+/// the glyphs and colours (plain text when it is not styled).
 pub fn own_status_line(
     account: Option<&str>,
     reading: Option<&Reading>,
@@ -713,7 +719,12 @@ pub fn own_status_line(
     };
     let head: Line = vec![s(term.g.baton, "brand bold"), p(" "), s(account, "bold")];
     let mut own: Line = Vec::new();
+    // A plan with no 5-hour limit: what is left of an old reading of it says nothing.
+    let no_five = reading.is_some_and(no_five_hour);
     for window in WINDOWS {
+        if no_five && window == Window::FiveHour {
+            continue;
+        }
         let Some(w) = reading
             .and_then(|r| r.window(window))
             .filter(|w| w.used.is_finite())

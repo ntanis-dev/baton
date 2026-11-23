@@ -286,21 +286,6 @@ fn run_hop(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
 
 // ---- Accounts -----------------------------------------------------------------------------------
 
-/// `--last-resort` alone means true on add.
-fn prepare_account(args: &[String]) -> Vec<String> {
-    args.iter()
-        .enumerate()
-        .map(|(i, arg)| {
-            let alone = args.get(i + 1).is_none_or(|next| next.starts_with('-'));
-            if arg == "--last-resort" && alone {
-                "--last-resort=true".to_owned()
-            } else {
-                arg.clone()
-            }
-        })
-        .collect()
-}
-
 /// `baton account ...`: the accounts, their order, marks and thresholds.
 fn run_account(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
     let paths = ctx.paths.clone();
@@ -937,12 +922,11 @@ pub fn commands() -> Vec<Command> {
         Command {
             options: vec![
                 Spec::text("mark"),
-                Spec::text("last-resort"),
+                Spec::boolean("last-resort"),
                 Spec::text("position"),
                 Spec::text("five-hour"),
                 Spec::text("weekly"),
             ],
-            prepare: Some(prepare_account),
             ..command(
                 "account",
                 "accounts",
@@ -1025,7 +1009,17 @@ pub fn commands() -> Vec<Command> {
             )
         },
         Command {
-            options: POLICY_FLAGS.iter().map(|(flag, _)| Spec::text(flag)).collect(),
+            options: POLICY_FLAGS
+                .iter()
+                .map(|(flag, key)| {
+                    // A setting that is on or off is an option that is on or off.
+                    if matches!(Policy::default().get(key), Some(Value::Bool(_))) {
+                        Spec::boolean(flag)
+                    } else {
+                        Spec::text(flag)
+                    }
+                })
+                .collect(),
             usage: vec![format!(
                 "baton policy [--json] [{}]",
                 POLICY_FLAGS

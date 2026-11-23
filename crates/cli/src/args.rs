@@ -1,7 +1,9 @@
 //! Reading a command's arguments: `--name value`, `--name=value`, `--flag`, `-h`, positionals and `--`.
 //!
 //! Strict, as Baton's command line has always been: an option the command does not have is an error,
-//! and so is a value that looks like an option (write it `--name=-value`).
+//! and so is a value that looks like an option (write it `--name=-value`). An option that is on or off
+//! never takes the argument after it for its value unless that is a word for on or off: `--last-resort
+//! Spare` is the flag and a name.
 
 use std::collections::BTreeMap;
 
@@ -14,6 +16,17 @@ pub enum Kind {
     Text,
     /// Nothing: `--flag`.
     Flag,
+    /// On or off: `--name` alone is on; `--name=off`, or `--name off` with one of the words for it
+    /// ([`BOOL_WORDS`]). Read back as a text, `true` when it stood alone.
+    Bool,
+}
+
+/// The words an on-or-off option takes after it: for on, for off, and for whatever the default is.
+pub const BOOL_WORDS: [&str; 9] = ["true", "false", "on", "off", "yes", "no", "1", "0", "default"];
+
+/// Whether an argument is a word for on or off.
+fn bool_word(arg: &str) -> bool {
+    BOOL_WORDS.iter().any(|word| arg.eq_ignore_ascii_case(word))
 }
 
 /// An option a command has.
@@ -33,6 +46,15 @@ impl Spec {
         Spec {
             name,
             kind: Kind::Text,
+            short: None,
+        }
+    }
+
+    /// An option that is on or off.
+    pub const fn boolean(name: &'static str) -> Spec {
+        Spec {
+            name,
+            kind: Kind::Bool,
             short: None,
         }
     }
@@ -120,7 +142,9 @@ pub fn parse_args(args: &[String], specs: &[Spec]) -> Result<Parsed, ArgError> {
                 Some((name, value)) => (name, Some(value.to_owned())),
                 None => (long, None),
             };
-            let takes_value = by_name(name).is_some_and(|spec| spec.kind == Kind::Text);
+            let kind = by_name(name).map(|spec| spec.kind);
+            let takes_value = kind == Some(Kind::Text)
+                || (kind == Some(Kind::Bool) && rest.peek().is_some_and(|next| bool_word(next)));
             let (value, was_inline) = match inline {
                 Some(value) => (Some(value), true),
                 None if takes_value => (rest.next().cloned(), false),
@@ -189,6 +213,11 @@ pub fn parse_args(args: &[String], specs: &[Spec]) -> Result<Parsed, ArgError> {
             }
             (Kind::Text, None) => {
                 return Err(ArgError(format!("Option '{both} <value>' argument missing")));
+            }
+            (Kind::Bool, value) => {
+                parsed
+                    .texts
+                    .insert(token.name, value.unwrap_or_else(|| "true".to_owned()));
             }
             (Kind::Flag, Some(_)) => {
                 return Err(ArgError(format!("Option '{both}' does not take an argument")));

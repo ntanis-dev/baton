@@ -238,6 +238,10 @@ pub fn inherited_depth(env: &Env) -> u8 {
     if colorterm.contains("truecolor") || colorterm.contains("24bit") {
         return 24;
     }
+    // Terminal.app says what program it is and draws 256 colours; the others that say so draw all.
+    if env.get("TERM_PROGRAM") == Some("Apple_Terminal") {
+        return 8;
+    }
     if env.has("WT_SESSION") || env.has("TERM_PROGRAM") {
         return 24;
     }
@@ -545,6 +549,20 @@ mod tests {
             24
         );
         assert_eq!(inherited_depth(&Env::from_pairs([("WT_SESSION", "x")])), 24);
+        assert_eq!(
+            inherited_depth(&Env::from_pairs([("TERM_PROGRAM", "iTerm.app")])),
+            24
+        );
+        // Terminal.app draws 256 colours, unless it says it draws them all.
+        let apple = [("TERM_PROGRAM", "Apple_Terminal"), ("TERM", "xterm-256color")];
+        assert_eq!(inherited_depth(&Env::from_pairs(apple)), 8);
+        assert_eq!(
+            inherited_depth(&Env::from_pairs([
+                ("TERM_PROGRAM", "Apple_Terminal"),
+                ("COLORTERM", "truecolor")
+            ])),
+            24
+        );
         assert_eq!(inherited_depth(&Env::from_pairs([("TERM", "xterm-256color")])), 8);
     }
 

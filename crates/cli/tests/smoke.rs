@@ -22,8 +22,33 @@ fn version_and_unknown_commands() {
     let unknown = baton(&home, &["nonsense"]);
     assert_eq!(
         (unknown.code, unknown.stderr.as_str()),
-        (2, "baton: unknown command nonsense. Try baton help.\n")
+        (2, "baton: Unknown command nonsense. Try baton help.\n")
     );
+    // An argument too many is a mistake, and so is said.
+    let extra = baton(&home, &["account", "remove", "one", "two"]);
+    assert_eq!(
+        (extra.code, extra.stderr.as_str()),
+        (2, "baton: Unexpected argument two. Try baton help account.\n")
+    );
+    assert_eq!(baton(&home, &["doctor", "now"]).code, 2);
+    // Asked with --json, a failure is JSON too, on stdout, with the same exit code.
+    let failed = baton(&home, &["account", "remove", "nobody", "--json"]);
+    assert_eq!(failed.code, 2);
+    assert_eq!(failed.stderr, "");
+    let said = failed.json();
+    assert_eq!(said["code"], 2);
+    assert!(said["error"].as_str().unwrap().contains("nobody"), "{said}");
+    let unknown = baton(&home, &["nonsense", "--json"]).json();
+    assert_eq!(
+        unknown,
+        serde_json::json!({ "error": "Unknown command nonsense. Try baton help.", "code": 2 })
+    );
+    let unread = baton(&home, &["version", "--nope", "--json"]).json();
+    assert_eq!(unread["code"], 2);
+    // On or off: the option alone is on, and never takes a name for its value.
+    let added = baton(&home, &["account", "add", "--last-resort", "Spare", "--json"]).json();
+    assert_eq!(added["account"]["mark"], "last-resort");
+    assert_eq!(added["account"]["name"], "Spare");
     let option = baton(&home, &["version", "--nope"]);
     assert_eq!(option.code, 2);
     assert!(

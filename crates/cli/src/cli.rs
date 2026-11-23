@@ -265,6 +265,40 @@ fn complain(message: &str, io: &mut Io<'_>) {
     let _ = writeln!(io.stderr, "{}", error_text(message, &term));
 }
 
+/// Says that a command failed, and returns its exit code: on stderr for a person, and for whoever
+/// asked with `--json` as JSON on stdout (`{ "error", "code" }`), so that what reads the answer reads
+/// the failure the same way.
+fn fail(message: &str, code: i32, json: bool, io: &mut Io<'_>) -> i32 {
+    if json {
+        let _ = writeln!(
+            io.stdout,
+            "{}",
+            pretty(&serde_json::json!({ "error": message, "code": code }))
+        );
+    } else {
+        complain(message, io);
+    }
+    code
+}
+
+/// How many arguments that are not options a command takes at most; None where it says itself what
+/// is wrong with them (a part it does not know, a list of any length), or never fails (a hook).
+fn most_positionals(command: &str, values: &Parsed) -> Option<usize> {
+    let part = values.positional(0);
+    Some(match command {
+        "hop" | "login" | "usage" | "help" => 1,
+        "view" | "status" | "pick" | "stats" | "policy" | "install" | "uninstall" | "doctor" | "version" => 0,
+        "sync" if part == Some("take") => 3,
+        "account" => match part {
+            None | Some("list") => 1,
+            Some("add" | "remove" | "set") => 2,
+            Some("rename" | "move") => 3,
+            _ => return None,
+        },
+        _ => return None,
+    })
+}
+
 /// Runs `baton` with these arguments (without the program's name) and returns its exit code.
 pub fn run(argv: &[String], io: &mut Io<'_>) -> i32 {
     let paths = paths_for(&io.env);
@@ -281,9 +315,18 @@ pub fn run(argv: &[String], io: &mut Io<'_>) -> i32 {
         }
     };
     let table = commands();
+    // Asked for JSON, also when the arguments cannot be read.
+    let asked_json = argv
+        .iter()
+        .take_while(|arg| *arg != "--")
+        .any(|arg| arg == "--json");
     let Some(command) = table.iter().find(|command| command.name == name) else {
-        complain(&format!("unknown command {name}. Try baton help."), io);
-        return 2;
+        return fail(
+            &format!("Unknown command {name}. Try baton help."),
+            2,
+            asked_json,
+            io,
+        );
     };
     let mut values = Parsed::default();
     let mut json = false;
@@ -297,16 +340,20 @@ pub fn run(argv: &[String], io: &mut Io<'_>) -> i32 {
         specs.push(Spec::flag("help").short('h'));
         values = match parse_args(&args, &specs) {
             Ok(values) => values,
-            Err(error) => {
-                complain(&error.0, io);
-                return 2;
-            }
+            Err(error) => return fail(&error.0, 2, asked_json, io),
         };
         if values.flag("help") {
             present(help_outcome(Some(name)), false, io);
             return 0;
         }
         json = values.flag("json");
+        // An argument too many is a mistake, not something to pass over.
+        if let Some(most) = most_positionals(name, &values)
+            && let Some(extra) = values.positional(most)
+        {
+            let message = format!("Unexpected argument {extra}. Try baton help {name}.");
+            return fail(&message, 2, json, io);
+        }
     }
     let mut ctx = Ctx {
         values,
@@ -322,14 +369,8 @@ pub fn run(argv: &[String], io: &mut Io<'_>) -> i32 {
             }
             code
         }
-        Err(CliError::Usage(message)) => {
-            complain(&message, io);
-            2
-        }
-        Err(CliError::Failed(message)) => {
-            complain(&message, io);
-            1
-        }
+        Err(CliError::Usage(message)) => fail(&message, 2, json, io),
+        Err(CliError::Failed(message)) => fail(&message, 1, json, io),
     }
 }
 

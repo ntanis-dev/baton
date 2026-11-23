@@ -333,12 +333,24 @@ fn baton_policy_status_line_usage_turns_the_addition_on_and_off_and_it_is_off_by
     assert_eq!(value(), false);
     assert_eq!(policy(&["--status-line-usage", "true"]).code, 0);
     assert_eq!(value(), true);
-    let refused = policy(&["--status-line-usage", "maybe"]);
+    let refused = policy(&["--status-line-usage=maybe"]);
     assert_eq!(refused.code, 2, "{}", refused.stdout);
     assert!(
         refused.stderr.contains("statusLineUsage is true or false."),
         "{}",
         refused.stderr
+    );
+    // The option alone turns it on; a word after it that is neither on nor off is not its value.
+    assert_eq!(policy(&["--status-line-usage", "off"]).code, 0);
+    assert_eq!(value(), false);
+    assert_eq!(policy(&["--status-line-usage"]).code, 0);
+    assert_eq!(value(), true);
+    let stray = policy(&["--status-line-usage", "maybe"]);
+    assert_eq!(stray.code, 2);
+    assert!(
+        stray.stderr.contains("Unexpected argument maybe"),
+        "{}",
+        stray.stderr
     );
     assert_eq!(value(), true, "a refused value changes nothing");
     assert_eq!(policy(&["--status-line-usage", "default"]).code, 0);

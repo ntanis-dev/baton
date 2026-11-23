@@ -11,7 +11,9 @@ use crate::env::Env;
 /// The colour of a role, as `#rrggbb`.
 pub fn role(name: &str) -> Option<&'static str> {
     Some(match name {
-        "accent" | "baton" | "warn" => "#d7ac78",
+        "accent" | "baton" => "#d7ac78",
+        // A hue of its own: a warning is not an accent that happens to say something is wrong.
+        "warn" => "#e0a93b",
         "brand" => "#e4bc89",
         "ok" => "#92ae99",
         "err" => "#cf8b82",
@@ -268,10 +270,21 @@ pub fn pick_glyphs_on(env: &Env, windows: bool) -> GlyphSet {
         "plain" => return GlyphSet::Plain,
         _ => {}
     }
-    if !windows {
-        return GlyphSet::Rich;
-    }
     let term = env.get("TERM").unwrap_or_default().to_lowercase();
+    if !windows {
+        // The Linux console has no font for the rich glyphs, and a locale that is not UTF-8 cannot
+        // carry them: the locale is what the first of these that is set says.
+        let locale = ["LC_ALL", "LC_CTYPE", "LANG"]
+            .iter()
+            .find_map(|name| env.some(name))
+            .map(str::to_lowercase);
+        let narrow = locale.is_some_and(|locale| !locale.contains("utf-8") && !locale.contains("utf8"));
+        return if term == "linux" || narrow {
+            GlyphSet::Plain
+        } else {
+            GlyphSet::Rich
+        };
+    }
     let modern = ["xterm", "mintty", "alacritty", "wezterm", "kitty"]
         .iter()
         .any(|name| term.contains(name));
@@ -336,6 +349,10 @@ pub fn text_props(style: &str, color: bool) -> TextProps {
                 tone = Tone::Colour(role("muted").unwrap_or_default().to_owned());
             }
             "dim" => dim = true,
+            // Body text is the terminal's own foreground: a fixed light grey would be next to
+            // invisible on a light terminal. The menu, which paints its own background, gives its
+            // rows their text colour itself.
+            "text" => {}
             "selected" => {
                 // A solid accent bar, bright bold text; NO_COLOR: inverse and bold.
                 if color {
@@ -426,6 +443,27 @@ mod tests {
     fn which_glyphs() {
         let env = |pairs: &[(&str, &str)]| Env::from_pairs(pairs.iter().map(|(k, v)| (*k, *v)));
         assert_eq!(pick_glyphs_on(&env(&[]), false), GlyphSet::Rich);
+        // Off Windows: the Linux console and a locale that is not UTF-8 get the plain ones.
+        let elsewhere = |pairs: &[(&str, &str)]| pick_glyphs_on(&env(pairs), false);
+        assert_eq!(elsewhere(&[("TERM", "linux")]), GlyphSet::Plain);
+        assert_eq!(
+            elsewhere(&[("TERM", "xterm-256color"), ("LANG", "en_US.UTF-8")]),
+            GlyphSet::Rich
+        );
+        assert_eq!(elsewhere(&[("LANG", "C")]), GlyphSet::Plain);
+        assert_eq!(elsewhere(&[("LANG", "el_GR.ISO-8859-7")]), GlyphSet::Plain);
+        assert_eq!(
+            elsewhere(&[("LANG", "C"), ("LC_ALL", "en_US.utf8")]),
+            GlyphSet::Rich
+        );
+        assert_eq!(
+            elsewhere(&[("LANG", "en_US.UTF-8"), ("LC_CTYPE", "POSIX")]),
+            GlyphSet::Plain
+        );
+        assert_eq!(
+            elsewhere(&[("LANG", "C"), ("BATON_GLYPHS", "rich")]),
+            GlyphSet::Rich
+        );
         assert_eq!(pick_glyphs_on(&env(&[]), true), GlyphSet::Plain);
         assert_eq!(pick_glyphs_on(&env(&[("WT_SESSION", "x")]), true), GlyphSet::Rich);
         assert_eq!(
@@ -491,6 +529,17 @@ mod tests {
             (Some("#20252c"), Some("#7e858e"))
         );
         assert!(text_props("label", false).italic);
+    }
+
+    #[test]
+    fn body_text_is_the_terminals_own_and_a_warning_has_a_hue_of_its_own() {
+        // No colour is given for text: a light terminal shows it dark, a dark one light.
+        assert_eq!(text_props("text", true).color, None);
+        assert!(text_props("text bold", true).bold);
+        assert_eq!(text_props("muted", true).color.as_deref(), role("muted"));
+        assert_ne!(role("warn"), role("accent"));
+        assert_ne!(role("warn"), role("err"));
+        assert_eq!(text_props("warn", true).color.as_deref(), role("warn"));
     }
 
     #[test]

@@ -922,7 +922,8 @@ fn the_status_line_is_coloured_like_the_menu_where_the_terminal_can_show_it_plai
             ..LineOptions::default()
         },
     );
-    assert!(lenient.contains("\x1b[38;2;215;172;120m95%"), "{lenient:?}");
+    // Close to the limit: the warning's own hue, not the accent's.
+    assert!(lenient.contains("\x1b[38;2;224;169;59m95%"), "{lenient:?}");
 }
 
 /// A status line command for the shell Claude Code runs them in here: it prints `mine:`, the line it

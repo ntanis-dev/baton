@@ -170,7 +170,7 @@ fn baton_serve_is_gone_not_a_command_not_in_the_help() {
     let home = accounts_home(&["acct1"]);
     let serve = baton(&home, &["serve"]);
     assert_eq!(serve.code, 2);
-    assert!(serve.stderr.contains("unknown command serve"), "{}", serve.stderr);
+    assert!(serve.stderr.contains("Unknown command serve"), "{}", serve.stderr);
     let help = baton(&home, &["help"]).stdout;
     let words: Vec<&str> = help.split(|c: char| !c.is_alphanumeric() && c != '_').collect();
     assert!(!words.contains(&"serve") && !help.contains("service"), "{help}");

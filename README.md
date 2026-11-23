@@ -97,6 +97,11 @@ Baton watches each turn end and decides what to do:
 - **Every account is blocked.** Baton shows who is back first, waits with a live countdown, and resumes there.
 - **You ask.** `/hop [account]` inside Claude Code, or `baton hop` from another terminal.
 
+To close `claude`, Baton asks it to leave the way you would, so it saves the conversation and stops what it
+started: two Ctrl+C typed into its console on Windows, a termination signal elsewhere. If it does not leave, Baton ends
+it together with everything it started, and puts the terminal back the way it was. The same happens when you close the
+terminal window or the session is told to end: `claude` is closed and nothing of the session is left behind.
+
 Hops that follow one another go on, not back: until a turn has ended well on an account and the conversation has been
 there for the minimum stay (30 minutes, `baton policy --min-stay <minutes>`), it is not moved back to an account it
 just left while another one is open. Only when it has been through all of them does it return, to the one it left

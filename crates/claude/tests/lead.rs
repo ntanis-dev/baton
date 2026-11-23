@@ -765,10 +765,7 @@ fn ctrl_c_typed_on_the_windows_console_reaches_claude_as_a_key_not_baton() {
         eprintln!("skipped: the console cannot be read here");
         return;
     }
-    assert_eq!(
-        type_console_keys(std::process::id(), &[3], KeyTiming::default()),
-        "ok"
-    );
+    assert_eq!(type_console_keys(&[3], KeyTiming::default()), "ok");
     until(|| run.has_step("ctrl-c").then_some(()));
     write(&run.dir.join("release"), "");
     let (code, lead) = run.finish();
@@ -1125,6 +1122,33 @@ fn a_conversation_the_other_baton_let_go_of_is_this_ones_from_then_on() {
     );
     let said = run.output.text();
     assert!(!said.contains("another baton"), "{said}");
+}
+
+#[test]
+fn asked_to_end_the_wrapper_ends_claude_lets_go_of_what_it_holds_and_leaves_with_that_code() {
+    let _serial = serial();
+    let mut run = lead(Setup {
+        args: vec!["--resume", SID],
+        ..Setup::new(json!([{ "steps": [{ "hook": "session-start" }, { "wait": "end" }] }]))
+    });
+    until(|| run.has_step("hook").then_some(()));
+    until(|| (!list_wrappers(run.paths()).is_empty()).then_some(()));
+    assert!(lock_holder(run.paths(), SID).is_some());
+    // The terminal is closed, or the wrapper is sent SIGTERM.
+    baton_core::sys::note_end_request(143);
+    let (code, lead) = run.finish();
+    baton_core::sys::note_end_request(0);
+    assert_eq!(code, 143);
+    assert!(has_event(&lead, "end requested"));
+    assert_eq!(run.invocations().len(), 1);
+    let pid = run.invocations()[0]["pid"].as_i64().unwrap();
+    until(|| (!is_alive(pid)).then_some(()));
+    assert!(list_wrappers(run.paths()).is_empty(), "its record is gone");
+    assert_eq!(
+        lock_holder(run.paths(), SID),
+        None,
+        "and so is its hold on the conversation"
+    );
 }
 
 #[test]

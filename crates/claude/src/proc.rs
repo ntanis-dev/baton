@@ -9,6 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use baton_core::fsutil::lower_priority;
+use baton_core::sys::{ProcessTree, own_group};
 
 /// How often a running child is looked at.
 pub(crate) const POLL: Duration = Duration::from_millis(10);
@@ -75,7 +76,10 @@ pub(crate) fn run_captured(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_window(command);
+    // In a group of its own: it is ended with whatever it started, and never outlives this process.
+    own_group(command);
     let mut child = command.spawn()?;
+    let tree = ProcessTree::background(child.id());
     if low {
         lower_priority(child.id());
     }
@@ -95,6 +99,7 @@ pub(crate) fn run_captured(
         out.stopped = stop.is_some_and(|stop| stop.load(Ordering::SeqCst));
         out.timed_out = !out.stopped && started.elapsed() >= timeout;
         if out.stopped || out.timed_out {
+            tree.kill();
             let _ = child.kill();
             let _ = child.wait();
             break;

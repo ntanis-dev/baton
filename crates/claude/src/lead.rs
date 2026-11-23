@@ -36,6 +36,7 @@ use baton_core::sessions::{
     valid_id, wrapper_file, wrapper_session_file,
 };
 use baton_core::state::{Want, load_snapshot};
+use baton_core::sys::{ProcessTree, end_requested, flush_input, save_terminal};
 use baton_core::term::{Terminal, notice, terminal_for};
 use baton_core::usage::{LIMIT_ERRORS, Others, TurnSample, read_rises, record_event};
 use baton_core::window::Limit;
@@ -189,7 +190,12 @@ impl std::fmt::Debug for LeadOptions {
 /// Runs a session wrapper to its end and returns the exit code: claude's own, 1 when nothing could be
 /// started, 130 when the operator quit.
 pub fn run_lead(options: LeadOptions) -> i32 {
-    Lead::new(options).run()
+    // The terminal being closed, or a signal to end: claude is ended and what the wrapper holds is
+    // let go of, where the process used to be gone at once with its lock and records left behind.
+    baton_core::sys::watch_end_requests();
+    let code = Lead::new(options).run();
+    baton_core::sys::end_handled();
+    code
 }
 
 /// One start of claude.
@@ -273,9 +279,16 @@ fn time_of(at: Ms) -> String {
     format!("{:02}:{:02}:{:02}", at.hour, at.minute, at.second)
 }
 
-/// The exit code of a claude that ended by itself: its own, or 1 when a signal ended it.
+/// The exit code of a claude that ended by itself: its own, or, when a signal ended it, 128 and the
+/// signal's number as a shell would say it (143 for SIGTERM).
 fn exit_code(status: &ExitStatus) -> i32 {
-    status.code().unwrap_or(1)
+    #[cfg(unix)]
+    let signal = std::os::unix::process::ExitStatusExt::signal(status);
+    #[cfg(not(unix))]
+    let signal: Option<i32> = None;
+    status
+        .code()
+        .unwrap_or_else(|| signal.map_or(1, |signal| 128 + signal))
 }
 
 /// How claude exited, for the log.
@@ -800,19 +813,41 @@ impl Lead {
             "launch",
             json!({ "account": launch.account, "args": launch.args, "reason": launch.reason }),
         );
+        // How the terminal is set now is how it is set again once claude is gone, however it goes.
+        // What was typed for a claude that is gone is not for the next one.
+        let own_terminal = self.stdio == LeadStdio::Inherit;
+        let terminal = if own_terminal { save_terminal() } else { None };
+        if own_terminal && launch.reason != "start" {
+            flush_input();
+        }
         let Some(mut child) = self.spawn(launcher, &launch.account, &launch.args, &launch.cwd) else {
             return Outcome::Exit(1);
         };
+        // Claude with what it starts (MCP servers, shells), should it have to be ended by force.
+        let tree = ProcessTree::foreground(child.id());
         self.claude_pid = Some(i64::from(child.id()));
         self.claude_seen = false;
+        let outcome = self.follow(&mut child, &tree);
+        if let Some(terminal) = terminal {
+            terminal.restore();
+        }
+        outcome
+    }
+
+    /// Follows a running claude: until it exits by itself, or until a turn end decides to move the
+    /// conversation and Baton ends it.
+    fn follow(&mut self, child: &mut Child, tree: &ProcessTree) -> Outcome {
         loop {
-            if wait_exit(&mut child, self.poll_ms) {
+            if wait_exit(child, self.poll_ms) {
                 break;
             }
-            let Some(pending) = self.poll(&mut child) else {
+            if let Some(code) = end_requested() {
+                return self.end_on_request(child, tree, code);
+            }
+            let Some(pending) = self.poll(child) else {
                 continue;
             };
-            if exited(&mut child) {
+            if exited(child) {
                 continue;
             }
             self.state = "ending";
@@ -823,13 +858,14 @@ impl Lead {
             logged["from"] = json!(pending.from);
             self.log("ending claude", json!({ "decision": logged }));
             let result = match &self.end_override {
-                Some(end) => end(&mut child),
+                Some(end) => end(child),
                 None => {
                     let method = load_config(&self.paths).end_method;
                     end_claude(
-                        &mut child,
+                        child,
                         &EndOptions {
                             method,
+                            tree: Some(tree),
                             ..EndOptions::default()
                         },
                     )
@@ -845,6 +881,23 @@ impl Lead {
         let status = child.wait().ok();
         self.log("claude exited", json!({ "exit": exit_json(status.as_ref()) }));
         Outcome::Exit(status.as_ref().map_or(1, exit_code))
+    }
+
+    /// The wrapper was asked to end (the terminal closed, SIGTERM, SIGHUP): claude is asked to end as
+    /// it would be for a hop, given a few seconds, and ended with what it started if it is still
+    /// there. The wrapper then leaves with the request's exit code.
+    fn end_on_request(&mut self, child: &mut Child, tree: &ProcessTree, code: i32) -> Outcome {
+        self.log("end requested", json!({ "code": code }));
+        // A closed console has told claude itself; a signal reached the wrapper alone.
+        if !(cfg!(unix) && baton_core::sys::terminate(child.id())) && cfg!(unix) {
+            let _ = child.kill();
+        }
+        if !wait_exit(child, 3000) {
+            crate::terminate::force_kill(child, Some(tree));
+        }
+        let status = child.wait().ok();
+        self.log("claude ended", json!({ "exit": exit_json(status.as_ref()) }));
+        Outcome::Exit(code)
     }
 
     /// Follows another conversation: the one the wrapper's own claude reported. One that another
@@ -945,7 +998,10 @@ impl Lead {
         {
             self.permission_mode = Some(mode.to_owned());
         }
-        let pending_hop = !hop.is_null() && hop_at > self.last_hop_at && hop_at >= self.launched_at;
+        // A request made while claude was being started again counts too: only what was asked
+        // before this wrapper began is somebody else's.
+        let asked_here = hop_at >= self.started_at.unwrap_or(self.launched_at);
+        let pending_hop = !hop.is_null() && hop_at > self.last_hop_at && asked_here;
         let state = turn.text("state");
         let fresh_turn_end =
             state == Some("idle") && turn_at > self.last_turn_at && turn_at >= self.launched_at;
@@ -1106,6 +1162,11 @@ impl Lead {
 
     /// After claude was ended: the countdown or the wait, then where to resume.
     fn after_end(&mut self, pending: &Pending) -> After {
+        // Keys left over from ending claude (a Ctrl+C more than it took), or typed for it, would
+        // answer the countdown before the operator read it.
+        if self.stdio == LeadStdio::Inherit {
+            flush_input();
+        }
         let from = self.account.clone().unwrap_or_else(|| pending.from.clone());
         let failure = pending.failure.as_ref();
         let named = failure
@@ -1331,7 +1392,7 @@ impl Lead {
                 "baton: stopped. Resume the conversation with: baton --resume {id}"
             ));
         }
-        After::Quit(130)
+        After::Quit(end_requested().unwrap_or(130))
     }
 
     /// The operator chose to stay: no move for a while, and the conversation resumes where it was.
@@ -1390,7 +1451,9 @@ impl Lead {
         let read = |name: &str| read_session_file(&self.paths, &id, name).unwrap_or(Value::Null);
         let live = read("live.json");
         let start = read("start.json");
-        let cwd = [live.word("cwd"), start.word("cwd")]
+        // Where the conversation is resumed: in the folder it belongs to, which is where Claude Code
+        // looks for it, and not in the folder its work has moved to since.
+        let cwd = [live.word("project"), start.word("cwd"), live.word("cwd")]
             .into_iter()
             .flatten()
             .map(PathBuf::from)
@@ -1406,19 +1469,28 @@ impl Lead {
             permission_mode: self.permission_mode.clone(),
         };
         let args = resume_args(&self.parsed, &id, prompt.as_deref(), &seen);
+        if !self.parsed.guessed.is_empty() {
+            self.log(
+                "unknown options kept with the token after them",
+                json!({ "options": self.parsed.guessed }),
+            );
+        }
         if next.reason == "stay" {
             let event = json!({ "type": "stay", "session": id, "account": next.to, "wrapper": self.wrapper });
             record_event(&self.paths, event, self.time());
         } else {
-            let event = json!({
-                "type": "hop",
-                "session": id,
-                "from": next.from,
-                "to": next.to,
-                "reason": next.reason,
-                "wrapper": self.wrapper,
-            });
-            record_event(&self.paths, event, self.time());
+            // A wait that ends on the account it began on moved nothing.
+            if next.from != next.to {
+                let event = json!({
+                    "type": "hop",
+                    "session": id,
+                    "from": next.from,
+                    "to": next.to,
+                    "reason": next.reason,
+                    "wrapper": self.wrapper,
+                });
+                record_event(&self.paths, event, self.time());
+            }
             self.resumed_by_baton = true;
             self.ok_since_resume = false;
         }

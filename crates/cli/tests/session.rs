@@ -103,7 +103,7 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         if let Some(child) = &mut self.child {
-            force_kill(child);
+            force_kill(child, None);
             let _ = child.wait();
         }
     }

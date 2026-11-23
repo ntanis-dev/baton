@@ -6,7 +6,7 @@
 //! sessions/<id>/turn.json    UserPromptSubmit / Stop / StopFailure:
 //!                            { at, state: running|idle, event, account, permissionMode,
 //!                              error, window, until, message, backgroundTasks }
-//! sessions/<id>/live.json    status line: { at, account, model, effort, cwd, reading }
+//! sessions/<id>/live.json    status line: { at, account, model, effort, cwd, project, reading }
 //! sessions/<id>/compact.json SessionStart source=compact: { at }
 //! sessions/<id>/end.json     SessionEnd: { at, reason }
 //! sessions/<id>/hop.json     baton hop / the /hop command: { at, to, by }

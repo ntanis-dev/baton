@@ -121,8 +121,18 @@ pub fn runs_from_path(exe: &Path) -> bool {
 }
 
 /// Whether two paths are the same file: by name, or once the links in them are followed.
-fn same_file(a: &Path, b: &Path) -> bool {
+pub fn same_file(a: &Path, b: &Path) -> bool {
     same_path(a, b) || matches!((fs::canonicalize(a), fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
+}
+
+/// The path the hooks, the status line and /hop are given for the running baton: where PATH finds it,
+/// when that is this very program. A package manager puts each version in a folder of its own and
+/// keeps one name on PATH that points at the current one; what is installed with that name keeps
+/// working after an update, where the versioned path would be gone.
+pub fn stable_exe(exe: &Path, env: &Env) -> PathBuf {
+    find_on_path("baton", env)
+        .filter(|found| same_file(found, exe))
+        .unwrap_or_else(|| exe.to_path_buf())
 }
 
 /// The status line command Baton installs.
@@ -511,6 +521,7 @@ pub fn plan_install(
     env: &Env,
     ferry: FerryAccess<'_>,
 ) -> Result<Plan, InstallError> {
+    let exe = &stable_exe(exe, env);
     let file = settings_path(paths);
     let (text, value) = read_settings(&file)?;
     let record = read_json(&paths.install);

@@ -450,6 +450,11 @@ impl Inner {
             let reason = format!("not signed in: baton login {name}");
             return self.record(id, &name, &Outcome::SignedOut { reason }, at);
         }
+        // Asking whether it is signed in took a while: another instance may poll by now, and two that
+        // ask the same account at once meet the endpoint's own limit.
+        if reason == "schedule" && options.may.as_ref().is_some_and(|may| !may()) {
+            return result("stopped");
+        }
         let request = ProbeRequest {
             paths: &options.paths,
             id,

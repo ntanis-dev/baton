@@ -185,7 +185,8 @@ enum Kind {
     Optional,
     /// Every token up to the next option.
     Variadic,
-    /// Not an option Baton knows: none.
+    /// Not an option Baton knows (a Claude Code newer than its tables): the token after it is taken
+    /// for its value when more follows, and for the prompt when it is the last one.
     Unknown,
 }
 
@@ -272,6 +273,9 @@ pub struct ParsedArgs {
     pub session: SessionChoice,
     /// Whether the launch is an interactive session (what Baton wraps).
     pub interactive: bool,
+    /// The options Baton does not know that were read with the token after them as their value: a
+    /// guess, kept on a resume and worth a line in the log.
+    pub guessed: Vec<String>,
 }
 
 impl ParsedArgs {
@@ -296,6 +300,7 @@ pub fn parse_claude_args(args: &[String]) -> ParsedArgs {
     let mut options: Vec<ClaudeOption> = Vec::new();
     let mut positionals: Vec<String> = Vec::new();
     let mut subcommand = None;
+    let mut guessed = Vec::new();
     let mut i = 0;
     while i < args.len() {
         let token = &args[i];
@@ -345,6 +350,13 @@ pub fn parse_claude_args(args: &[String]) -> ParsedArgs {
                 values.push(args[i].clone());
                 raw.push(args[i].clone());
             }
+        } else if takes == Kind::Unknown && i + 2 < args.len() && !is_flag(&args[i + 1]) {
+            // A token with more after it is no prompt: it goes with the option, also on a resume,
+            // where an option left without its value would take the next token for it.
+            i += 1;
+            values.push(args[i].clone());
+            raw.push(args[i].clone());
+            guessed.push(flag.to_owned());
         }
         options.push(ClaudeOption {
             flag: flag.to_owned(),
@@ -363,6 +375,7 @@ pub fn parse_claude_args(args: &[String]) -> ParsedArgs {
             id: None,
         },
         interactive: true,
+        guessed,
     };
     parsed.session.id = parsed.value("--session-id").map(str::to_owned);
     if parsed.has("--resume") {
@@ -509,7 +522,7 @@ mod tests {
 
     #[test]
     fn options_keep_what_they_took() {
-        let parsed = parse_claude_args(&args(&["--model=opus", "-d", "api", "--weird", "x", "--", "-p"]));
+        let parsed = parse_claude_args(&args(&["--model=opus", "-d", "api", "--weird", "--", "x", "-p"]));
         assert_eq!(
             parsed.options[0],
             ClaudeOption {
@@ -528,5 +541,31 @@ mod tests {
         assert_eq!(parsed.positionals, ["x", "-p"]);
         assert!(parsed.interactive, "after -- nothing is an option");
         assert_eq!(SessionMode::Picker.as_str(), "picker");
+    }
+
+    #[test]
+    fn an_option_baton_does_not_know_keeps_the_token_after_it_unless_that_is_the_prompt() {
+        let live = Live::default();
+        // More follows the token: it is the option's value, and stays with it on a resume.
+        let parsed = parse_claude_args(&args(&["--newer", "value", "--model", "opus", "do this"]));
+        assert_eq!(parsed.guessed, ["--newer"]);
+        assert_eq!(parsed.options[0].raw, ["--newer", "value"]);
+        assert_eq!(parsed.positionals, ["do this"]);
+        assert_eq!(
+            resume_args(&parsed, "sid", Some("note"), &live),
+            ["--newer", "value", "--model", "opus", "--resume", "sid", "note"]
+        );
+        // The last token is the prompt, whatever stands before it.
+        let parsed = parse_claude_args(&args(&["--newer", "do this"]));
+        assert!(parsed.guessed.is_empty());
+        assert_eq!(parsed.positionals, ["do this"]);
+        assert_eq!(
+            resume_args(&parsed, "sid", Some("note"), &live),
+            ["--newer", "--resume", "sid", "note"]
+        );
+        // Written with `=` there is nothing to guess.
+        let parsed = parse_claude_args(&args(&["--newer=value", "do this"]));
+        assert!(parsed.guessed.is_empty());
+        assert_eq!(parsed.options[0].values, ["value"]);
     }
 }

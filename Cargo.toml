@@ -31,7 +31,6 @@ baton-tui = { path = "crates/tui" }
 baton-testkit = { path = "crates/testkit" }
 
 # Third party
-base64 = "=0.22.1"
 crossterm = "=0.29.0"
 # The system time zone, and the bundled zone data only where the platform has none of its own (Windows).
 jiff = { version = "=0.2.41", default-features = false, features = [
@@ -52,7 +51,9 @@ unicode-normalization = "=0.1.25"
 uuid = { version = "=1.28.0", features = ["v4"] }
 windows-sys = { version = "=0.61.2", features = [
     "Win32_Foundation",
+    "Win32_Security",
     "Win32_System_Console",
+    "Win32_System_JobObjects",
     "Win32_System_Threading",
 ] }
 

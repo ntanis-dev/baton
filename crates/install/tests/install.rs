@@ -328,6 +328,44 @@ fn a_status_line_changed_after_install_is_left_as_it_is() {
 }
 
 #[test]
+fn what_is_installed_names_the_baton_path_finds_when_that_is_the_running_one() {
+    use baton_install::install::stable_exe;
+    let home = temp_home();
+    let name = if cfg!(windows) { "baton.exe" } else { "baton" };
+    let program = |dir: &Path| {
+        let file = dir.join(name);
+        write(&file, "x");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&file, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        file
+    };
+    let path_of = |dir: &Path| Env::from_pairs([("PATH", dir.as_os_str().to_owned())]);
+    // The version's own folder, as a package manager lays it out, and the folder that is on PATH.
+    let versioned = program(&home.home.join("cellar").join("0.1.0").join("bin"));
+    let bin = home.home.join("bin");
+    // Another baton on PATH, or none: the running one is named as it is.
+    assert_eq!(stable_exe(&versioned, &path_of(&bin)), versioned);
+    let other = program(&bin);
+    assert_eq!(stable_exe(&versioned, &path_of(&bin)), versioned);
+    // PATH finds the running one itself.
+    assert_eq!(
+        stable_exe(&versioned, &path_of(versioned.parent().unwrap())),
+        versioned
+    );
+    // The name on PATH is a link to the running one: that name is what stays after an update.
+    #[cfg(unix)]
+    {
+        fs::remove_file(&other).unwrap();
+        std::os::unix::fs::symlink(&versioned, &other).unwrap();
+        assert_eq!(stable_exe(&versioned, &path_of(&bin)), other);
+    }
+    let _ = other;
+}
+
+#[test]
 fn a_baton_whose_path_a_shell_cannot_start_with_runs_from_path_and_the_plan_says_when_it_is_not_there() {
     let home = temp_home();
     let paths = &home.paths;

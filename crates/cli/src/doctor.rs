@@ -15,13 +15,13 @@ use baton_core::clock::Ms;
 use baton_core::config::{config_problem, load_config};
 use baton_core::env::Env;
 use baton_core::format::NO_POLLER;
-use baton_core::paths::{Paths, profile_dir, profile_env, same_path};
+use baton_core::paths::{Paths, profile_dir, profile_env};
 use baton_core::poll::{poll_holder, read_poll_state};
 use baton_install::ferry::{
     FerryAccess, LAUNCHER_ID, Registered, Registration, detect_ferry, ferry_agent, registration_state,
 };
 use baton_install::hooks::status_line_shell;
-use baton_install::install::{install_state, runs_from_path};
+use baton_install::install::{install_state, runs_from_path, same_file};
 use baton_profile::profile::{can_symlink_files, inspect_profile};
 use baton_profile::shared::every_question;
 use baton_profile::sync::full_sync;
@@ -231,6 +231,38 @@ pub fn run_doctor(options: &DoctorOptions<'_>) -> Report {
             None => NO_POLLER.to_owned(),
         },
     );
+    // An account whose usage could not be read the last time it was asked: what went wrong, since
+    // when, and when it is asked again. Baton decides with readings that grow old meanwhile.
+    for account in &config.accounts {
+        let Some(entry) = poll.accounts.get(&account.id) else {
+            continue;
+        };
+        let status = entry.status.as_deref().unwrap_or("ok");
+        if status == "ok" {
+            continue;
+        }
+        let mut detail = match entry.reason.as_deref().filter(|reason| !reason.is_empty()) {
+            Some(reason) => format!("{status}: {reason}"),
+            None => status.to_owned(),
+        };
+        detail.push_str(&match entry.ok_at.as_deref() {
+            Some(at) => format!("; it last answered {at}"),
+            None => "; it has not answered yet".to_owned(),
+        });
+        if let Some(failures) = entry.failures.filter(|failures| *failures > 1) {
+            detail.push_str(&format!("; {failures} times in a row"));
+        }
+        if let Some(until) = entry.backoff_until.as_deref() {
+            detail.push_str(&format!("; asked again after {until}"));
+        }
+        // A plan with no usage to read, or an endpoint that asks for patience, is no fault.
+        let fault = !matches!(status, "unavailable" | "rate-limited");
+        add(
+            &format!("account {} usage check", account.name),
+            if fault { Some(false) } else { None },
+            detail,
+        );
+    }
     if config.accounts.is_empty() {
         add(
             "accounts",
@@ -331,7 +363,8 @@ pub fn run_doctor(options: &DoctorOptions<'_>) -> Report {
         // The status line and /hop name `baton` alone when its own path cannot start a command line.
         if install.status_line && runs_from_path(exe) {
             let found = find_on_path("baton", env);
-            let ours = found.as_deref().is_some_and(|found| same_path(found, exe));
+            // The same file, whatever links lead to it.
+            let ours = found.as_deref().is_some_and(|found| same_file(found, exe));
             add(
                 "baton on PATH",
                 Some(ours),

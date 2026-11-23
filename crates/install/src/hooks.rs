@@ -514,7 +514,7 @@ fn record_live(
         .at("workspace")
         .text("current_dir")
         .or_else(|| input.text("cwd"));
-    let live = json!({
+    let mut live = json!({
         "at": iso(now),
         "account": account,
         "model": input.at("model").text("id"),
@@ -522,8 +522,13 @@ fn record_live(
         "cwd": cwd,
         "reading": live_reading(parsed),
     });
+    // The folder the conversation belongs to, which is where it is resumed: Claude Code files a
+    // conversation under the folder it was started in, wherever its work has taken it since.
+    if let Some(project) = input.at("workspace").text("project_dir") {
+        live["project"] = json!(project);
+    }
     let same = read_session_file(paths, id, "live.json").is_some_and(|before| {
-        ["account", "model", "effort", "cwd"]
+        ["account", "model", "effort", "cwd", "project"]
             .iter()
             .all(|key| before.at(key) == live.at(key))
             && compact(before.at("reading")) == compact(live.at("reading"))

@@ -99,6 +99,40 @@ fn doctor_does_not_flag_a_fresh_account_for_history_jsonl_whether_it_is_a_link_o
 }
 
 #[test]
+fn doctor_says_what_went_wrong_with_an_accounts_usage_check() {
+    let home = home_with_claude();
+    for name in ["acct2", "acct3", "acct4"] {
+        assert_eq!(baton(&home, &["account", "add", name]).code, 0);
+    }
+    write_json(
+        &baton_core::poll::poll_file(&home.paths),
+        &json!({ "accounts": {
+            "acct2": {
+                "status": "failed", "reason": "claude exited with 1", "failures": 3,
+                "okAt": "2026-11-20T10:00:00.000Z", "backoffUntil": "2026-11-23T12:00:00.000Z"
+            },
+            "acct3": { "status": "rate-limited", "reason": "asked too often" },
+            "acct4": { "status": "ok", "okAt": "2026-11-23T10:00:00.000Z" }
+        } }),
+    );
+    let report = baton(&home, &["doctor", "--json"]).json();
+    let failed = check(&report, "account acct2 usage check").unwrap();
+    assert_eq!(failed["ok"], false);
+    assert_eq!(
+        failed["detail"],
+        "failed: claude exited with 1; it last answered 2026-11-20T10:00:00.000Z; 3 times in a row; asked again after 2026-11-23T12:00:00.000Z"
+    );
+    // Patience asked for by the endpoint is said, and is no fault.
+    let limited = check(&report, "account acct3 usage check").unwrap();
+    assert_eq!(limited["ok"], Value::Null);
+    assert_eq!(
+        limited["detail"],
+        "rate-limited: asked too often; it has not answered yet"
+    );
+    assert!(check(&report, "account acct4 usage check").is_none());
+}
+
+#[test]
 fn doctor_says_which_baton_it_is_and_what_is_missing_before_and_after_install() {
     let home = home_with_claude();
     let before = baton(&home, &["doctor", "--json"]).json();

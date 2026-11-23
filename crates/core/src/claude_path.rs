@@ -99,7 +99,14 @@ pub fn shim_target(shim: &Path) -> Option<PathBuf> {
         .map(|m| crate::paths::resolve(dir.join(m.as_str().replace('\\', std::path::MAIN_SEPARATOR_STR))))
         .filter(|target| target.exists())
         .collect();
-    if let Some(exe) = found.iter().find(|p| has_ext(p, &["exe"])) {
+    // Not the Node the shim would run the script with: it is named there too, and sits beside the
+    // shim wherever Node itself is installed in the folder its global packages go to.
+    let is_node = |path: &Path| {
+        path.file_stem()
+            .and_then(|stem| stem.to_str())
+            .is_some_and(|stem| stem.eq_ignore_ascii_case("node"))
+    };
+    if let Some(exe) = found.iter().find(|p| has_ext(p, &["exe"]) && !is_node(p)) {
         return Some(exe.clone());
     }
     if let Some(script) = found.iter().find(|p| is_script(p)) {
@@ -177,8 +184,27 @@ fn launch_resolved(path: PathBuf, env: &Env) -> Result<Launcher, ClaudeNotFound>
     launch(path, env)
 }
 
+/// Where Claude Code is installed when no PATH says so: the native installer's place under `home`,
+/// the older local installer's, and (not on Windows) where Homebrew and other installers put it. A
+/// program started from a desktop, or by Ferry, often has no PATH of a shell. `system` says whether
+/// the places outside the home are looked at: not under a home that was named with `BATON_HOME`,
+/// which is one for trying things out and must not find the machine's own Claude Code.
+fn usual_places(home: Option<&Path>, system: bool) -> Vec<PathBuf> {
+    let name = if cfg!(windows) { "claude.exe" } else { "claude" };
+    let mut places = Vec::new();
+    if let Some(home) = home {
+        places.push(home.join(".local").join("bin").join(name));
+        places.push(home.join(".claude").join("local").join(name));
+    }
+    if system && !cfg!(windows) {
+        places.push(PathBuf::from("/opt/homebrew/bin/claude"));
+        places.push(PathBuf::from("/usr/local/bin/claude"));
+    }
+    places
+}
+
 /// Finds Claude Code: the path the operator configured, else `BATON_CLAUDE`, else `claude` on PATH,
-/// else the native installer's location under `home`.
+/// else one of the places it is usually installed in ([`usual_places`]).
 pub fn resolve_claude(
     configured: Option<&str>,
     env: &Env,
@@ -198,19 +224,11 @@ pub fn resolve_claude(
         };
         return launch_resolved(path, env);
     }
-    let mut path = find_on_path("claude", env);
-    if path.is_none()
-        && let Some(home) = home
-    {
-        // The native installer's location, when a terminal did not get it on PATH.
-        let native =
-            home.join(".local")
-                .join("bin")
-                .join(if cfg!(windows) { "claude.exe" } else { "claude" });
-        if is_file(&native) {
-            path = Some(native);
-        }
-    }
+    let path = find_on_path("claude", env).or_else(|| {
+        usual_places(home, env.some("BATON_HOME").is_none())
+            .into_iter()
+            .find(|place| is_executable(place))
+    });
     let Some(path) = path else {
         return Err(ClaudeNotFound("Claude Code (claude) is not on PATH.".to_owned()));
     };
@@ -348,7 +366,34 @@ mod tests {
         assert_eq!(shim_target(&shim), Some(crate::paths::resolve(&bin)));
         // Nothing named: the package's usual places.
         fs::write(&shim, "@ECHO off\r\n").unwrap();
-        assert_eq!(shim_target(&shim), Some(bin));
+        assert_eq!(shim_target(&shim), Some(bin.clone()));
         assert_eq!(shim_target(&dir.path().join("none.cmd")), None);
+        // The shim npm writes names the Node beside it before the script: that Node is not Claude Code.
+        program(&dir.path().join("node.exe"));
+        fs::remove_file(&bin).unwrap();
+        fs::write(
+            &shim,
+            "IF EXIST \"%dp0%\\node.exe\" (\r\n  SET \"_prog=%dp0%\\node.exe\"\r\n)\r\n\"%_prog%\"  \"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js\" %*\r\n",
+        )
+        .unwrap();
+        assert_eq!(shim_target(&shim), Some(crate::paths::resolve(&cli)));
+    }
+
+    #[test]
+    fn the_older_local_install_is_found_without_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::from_pairs([("PATH", "")]);
+        let local = dir.path().join(".claude").join("local").join(exe("claude"));
+        program(&local);
+        assert_eq!(resolve_claude(None, &env, Some(dir.path())).unwrap().path, local);
+        // The native installer's place comes first.
+        let native = dir.path().join(".local").join("bin").join(exe("claude"));
+        program(&native);
+        assert_eq!(resolve_claude(None, &env, Some(dir.path())).unwrap().path, native);
+        assert_eq!(
+            usual_places(Some(dir.path()), true).len(),
+            if cfg!(windows) { 2 } else { 4 }
+        );
+        assert_eq!(usual_places(Some(dir.path()), false).len(), 2);
     }
 }

@@ -65,7 +65,7 @@ fn keys_that_do_not_end_claude_fall_back_to_ending_its_process_tree_then_restore
     let mut child = sleeper();
     let typed: RefCell<Vec<Vec<u32>>> = RefCell::new(Vec::new());
     let restored = Cell::new(0);
-    let type_keys = |_pid: u32, codes: &[u32]| {
+    let type_keys = |codes: &[u32]| {
         typed.borrow_mut().push(codes.to_vec());
         "ok".to_owned()
     };
@@ -92,7 +92,7 @@ fn keys_stop_as_soon_as_claude_has_exited() {
     let mut child = sleeper();
     let pid = child.id();
     let rounds = Cell::new(0);
-    let type_keys = |_pid: u32, _codes: &[u32]| {
+    let type_keys = |_codes: &[u32]| {
         rounds.set(rounds.get() + 1);
         kill_pid(pid);
         "ok".to_owned()
@@ -179,11 +179,8 @@ fn two_ctrl_c_typed_into_the_console_arrive_as_keys_at_a_raw_mode_reader() {
         return;
     }
     let started = Instant::now();
-    let timing = KeyTiming {
-        delay_ms: 200,
-        ..KeyTiming::default()
-    };
-    assert_eq!(type_console_keys(std::process::id(), &[3, 3], timing), "ok");
+    let timing = KeyTiming { delay_ms: 200 };
+    assert_eq!(type_console_keys(&[3, 3], timing), "ok");
     assert_eq!(reader.wait().unwrap().code(), Some(0));
     eprintln!("keys typed and read in {} ms", started.elapsed().as_millis());
     let chunks: Vec<String> = read_json_lines(&log)

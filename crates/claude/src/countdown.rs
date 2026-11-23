@@ -213,6 +213,10 @@ pub fn key_prompt<T>(
     let started = (options.now)();
     input.begin();
     let answer = loop {
+        // Asked to end (the terminal closed, a signal): as if the operator quit.
+        if baton_core::sys::end_requested().is_some() {
+            break Answer::Quit;
+        }
         let step = on_tick((options.now)()).unwrap_or_else(|error| Step::line(format!("baton: {error}")));
         if let Some(line) = step.line.filter(|line| !line.is_empty()) {
             let _ = write!(output, "\r{line}\x1b[K");

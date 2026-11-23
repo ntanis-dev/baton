@@ -39,6 +39,7 @@ use baton_core::env::Env;
 use baton_core::fsutil::{lower_priority, random_hex, remove_tree};
 use baton_core::json::Get;
 use baton_core::paths::{Paths, profile_dir, profile_env};
+use baton_core::sys::{ProcessTree, own_group};
 use baton_core::usage::{ExtraUsage, Meter, Sample, is_weekly_meter, parse_time_after};
 use baton_core::window::PerWindow;
 use regex::Regex;
@@ -413,6 +414,8 @@ enum Line {
 struct ClaudeSession {
     /// The process.
     child: Child,
+    /// The process with everything it starts: ended together, and with this value at the latest.
+    tree: ProcessTree,
     /// Its stdin, until the session is closed.
     stdin: Option<ChildStdin>,
     /// The lines of its stdout.
@@ -442,10 +445,12 @@ impl ClaudeSession {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         hide_window(&mut command);
-        // Spawned here so that a hang can end the whole tree.
+        // In a group of its own, so that a hang can end the whole tree.
+        own_group(&mut command);
         let mut child = command
             .spawn()
             .map_err(|error| format!("spawn claude: {error}"))?;
+        let tree = ProcessTree::background(child.id());
         if options.low {
             lower_priority(child.id());
         }
@@ -492,6 +497,7 @@ impl ClaudeSession {
         let mut session = ClaudeSession {
             stdin: child.stdin.take(),
             child,
+            tree,
             lines,
             errors,
             request_id: random_hex(8),
@@ -586,13 +592,13 @@ impl Session for ClaudeSession {
     }
 
     fn abort(&mut self) {
-        force_kill(&mut self.child);
+        force_kill(&mut self.child, Some(&self.tree));
     }
 
     fn close(&mut self) {
         self.stdin = None;
         if !wait_exit(&mut self.child, 5000) {
-            force_kill(&mut self.child);
+            force_kill(&mut self.child, Some(&self.tree));
             wait_exit(&mut self.child, 5000);
         }
     }

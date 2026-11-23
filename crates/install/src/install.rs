@@ -23,7 +23,9 @@ use std::sync::LazyLock;
 use baton_core::claude_path::find_on_path;
 use baton_core::clock::{Ms, iso};
 use baton_core::env::Env;
-use baton_core::fsutil::{Modes, read_json, read_text, remove_file, write_file_atomic, write_json_atomic};
+use baton_core::fsutil::{
+    Modes, read_json, read_text, remove_file, write_file_atomic, write_file_durable, write_json_durable,
+};
 use baton_core::json::{Get, Object, compact};
 use baton_core::paths::{Paths, forward, same_path};
 use regex::Regex;
@@ -970,7 +972,7 @@ pub fn apply_plan(
             },
         );
         attempt("write", &paths.install, || {
-            write_json_atomic(&paths.install, &record)
+            write_json_durable(&paths.install, &record)
         })?;
     }
     for f in &plan.files {
@@ -984,7 +986,7 @@ pub fn apply_plan(
         let done = match &f.after {
             None => attempt("remove", &f.path, || remove_file(&target)),
             Some(after) => attempt("write", &f.path, || {
-                write_file_atomic(&target, after, if f.ferry { PRIVATE } else { Modes::default() })
+                write_file_durable(&target, after, if f.ferry { PRIVATE } else { Modes::default() })
             }),
         };
         let Err(error) = done else {

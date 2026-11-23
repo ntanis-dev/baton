@@ -18,7 +18,8 @@ use baton_core::poll::request_poll;
 use baton_core::state::{Want, load_snapshot};
 use baton_core::stats::compute_stats;
 use baton_install::hooks::{
-    StatusLine, append_usage, columns_of, handle_hook, handle_status_line, run_previous_status_line,
+    StatusLine, append_usage, columns_of, config_notice, handle_hook, handle_status_line,
+    run_previous_status_line,
 };
 use baton_install::install::{apply_plan, plan_install, plan_uninstall};
 use baton_profile::accounts::{
@@ -154,6 +155,10 @@ fn run_hook(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
     let (env, paths, now) = (&ctx.io.env, &ctx.paths, (ctx.io.now)());
     // A hook never fails the session.
     let _ = catch_unwind(AssertUnwindSafe(|| handle_hook(event, &input, env, paths, now)));
+    // A config that cannot be used makes this profile nobody's account: say so where it can be read.
+    if let Some(notice) = config_notice(env, paths) {
+        let _ = writeln!(ctx.io.stderr, "{notice}");
+    }
     Ok(Outcome::quiet(0))
 }
 
@@ -176,6 +181,11 @@ fn run_statusline(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
             Ok(Outcome::quiet(out.code))
         }
         StatusLine::Text(text) => {
+            // Nothing to show because the config cannot be used: that is what the line says.
+            let text = match config_notice(env, paths) {
+                Some(notice) if text.is_empty() => notice,
+                _ => text,
+            };
             if !text.is_empty() {
                 let _ = writeln!(ctx.io.stdout, "{text}");
             }
@@ -671,7 +681,7 @@ fn run_stats(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
 }
 
 /// The flags of `baton policy` and the settings they change, in the order they are shown.
-const POLICY_FLAGS: [(&str, &str); 21] = [
+const POLICY_FLAGS: [(&str, &str); 25] = [
     ("mode", "mode"),
     ("five-hour", "fiveHour"),
     ("weekly", "weekly"),
@@ -693,6 +703,10 @@ const POLICY_FLAGS: [(&str, &str); 21] = [
     ("status-line-usage", "statusLineUsage"),
     ("usage-poll", "usagePollMinutes"),
     ("full-sync", "fullSync"),
+    ("history-days", "historyDays"),
+    ("session-days", "sessionDays"),
+    ("log-days", "logDays"),
+    ("backups-kept", "backupsKept"),
 ];
 
 /// A setting's value as the screen shows it.

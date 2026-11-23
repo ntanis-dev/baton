@@ -18,6 +18,7 @@ pub mod paths;
 pub mod policy;
 pub mod poll;
 pub mod prompts;
+pub mod retention;
 pub mod sessions;
 pub mod state;
 pub mod stats;

@@ -60,7 +60,8 @@ pub fn same_name(a: &str, b: &str) -> bool {
 }
 
 /// The id a new account gets from its name: lower case letters, digits, `-` and `_` (anything else
-/// becomes `-`), at most 40 characters, `account` when nothing is left; the config makes it unique.
+/// becomes `-`), at most 40 characters, `account` when nothing is left, never a name Windows keeps for
+/// a device; the config makes it unique.
 pub fn id_from_name(name: &str) -> String {
     let mut base = String::new();
     let mut gap = false;
@@ -87,9 +88,21 @@ pub fn id_from_name(name: &str) -> String {
     let id = cut.trim_end_matches(edge);
     if id.is_empty() {
         "account".to_owned()
+    } else if is_device_name(id) {
+        // Windows gives no folder such a name, and an id is the same on every system.
+        format!("{id}-account")
     } else {
         id.to_owned()
     }
+}
+
+/// Whether Windows keeps `name` for a device (`con`, `nul`, `com1`, ...): no file or folder can have it.
+fn is_device_name(name: &str) -> bool {
+    let numbered = |stem: &str| {
+        name.strip_prefix(stem)
+            .is_some_and(|n| n.len() == 1 && matches!(n.as_bytes()[0], b'1'..=b'9'))
+    };
+    matches!(name, "con" | "prn" | "aux" | "nul") || numbered("com") || numbered("lpt")
 }
 
 #[cfg(test)]
@@ -141,5 +154,13 @@ mod tests {
         assert_eq!(id_from_name(&"abc ".repeat(30)).len(), 39);
         assert_eq!(id_from_name(&"x".repeat(60)), "x".repeat(40));
         assert_eq!(id_from_name("!!!"), "account");
+        // A name Windows keeps for a device is no folder's name there.
+        assert_eq!(id_from_name("Con"), "con-account");
+        assert_eq!(id_from_name("NUL"), "nul-account");
+        assert_eq!(id_from_name("com1"), "com1-account");
+        assert_eq!(id_from_name("LPT9"), "lpt9-account");
+        assert_eq!(id_from_name("com0"), "com0");
+        assert_eq!(id_from_name("com10"), "com10");
+        assert_eq!(id_from_name("console"), "console");
     }
 }

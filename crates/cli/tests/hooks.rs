@@ -103,6 +103,40 @@ fn the_hook_command_exits_0_silently_on_garbage() {
 }
 
 #[test]
+fn a_config_that_cannot_be_read_is_said_by_the_hooks_and_the_status_line_and_fails_nothing() {
+    let home = four_accounts_home();
+    std::fs::write(&home.paths.config, "{ half a config").unwrap();
+    let input = json!({ "session_id": SID }).to_string();
+    // Under one of Baton's profiles: the hook still exits 0, and says why it recorded nothing.
+    let hook = spawn(&env2(&home), &["hook", "session-start"], &input);
+    assert_eq!((hook.code, hook.stdout.as_str()), (0, ""));
+    assert!(
+        hook.stderr.starts_with("baton: ") && hook.stderr.contains("is not valid JSON"),
+        "{}",
+        hook.stderr
+    );
+    // The status line has nothing to show, and shows that.
+    let line = spawn(&plain_env(&home, &[]), &["statusline"], &input);
+    assert_eq!(line.code, 0);
+    assert!(
+        line.stdout.contains("is not valid JSON") && line.stdout.contains("baton doctor"),
+        "{}",
+        line.stdout
+    );
+    // Plain claude, in no profile of Baton's, hears nothing of it.
+    let plain = spawn(&test_env(&home.home), &["hook", "session-start"], &input);
+    assert_eq!(
+        (plain.code, plain.stdout.as_str(), plain.stderr.as_str()),
+        (0, "", "")
+    );
+    // `baton` itself says what is wrong, not that there are no accounts.
+    let start = spawn(&test_env(&home.home), &["--version-of-nothing"], "");
+    let said = format!("{}{}", start.stdout, start.stderr);
+    assert!(said.contains("is not valid JSON"), "{said}");
+    assert!(!said.contains("No accounts yet"), "{said}");
+}
+
+#[test]
 fn hooks_are_fast_as_a_process() {
     let home = four_accounts_home();
     let env = env2(&home);

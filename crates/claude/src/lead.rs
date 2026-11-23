@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use baton_core::claude_path::{ClaudeNotFound, Launcher, resolve_claude};
 use baton_core::clock::{HOUR, MINUTE, Ms, iso, local, ms_of, now_ms};
-use baton_core::config::{Policy, effective_policy, load_config, name_of};
+use baton_core::config::{Policy, config_problem, effective_policy, load_config, name_of};
 use baton_core::env::Env;
 use baton_core::format::NO_ACCOUNTS;
 use baton_core::fsutil::{append_json_line, random_hex, read_json, write_json_atomic};
@@ -30,13 +30,14 @@ use baton_core::policy::{
     hop_run, pick_start, states_for, turn_cost,
 };
 use baton_core::prompts::{continue_prompt, hop_line, stay_prompt, wait_line};
+use baton_core::retention::clean_up;
 use baton_core::sessions::{
-    Lock, SessionLock, acquire_lock, hold_wrapper, prune_sessions, read_session_file, read_turn_samples,
-    remove_wrapper, valid_id, wrapper_file, wrapper_session_file,
+    Lock, SessionLock, acquire_lock, hold_wrapper, read_session_file, read_turn_samples, remove_wrapper,
+    valid_id, wrapper_file, wrapper_session_file,
 };
 use baton_core::state::{Want, load_snapshot};
 use baton_core::term::{Terminal, notice, terminal_for};
-use baton_core::usage::{LIMIT_ERRORS, TurnSample, record_event};
+use baton_core::usage::{LIMIT_ERRORS, Others, TurnSample, read_rises, record_event};
 use baton_core::window::Limit;
 use baton_profile::profile::{LinkOptions, carry_trust, link_profile};
 use baton_profile::sync::{Apply, HOME, full_sync, sync_settings, take};
@@ -628,6 +629,11 @@ impl Lead {
 
     /// Picks the account, starts claude, and follows the conversation from account to account.
     fn main(&mut self) -> i32 {
+        // A config that cannot be read is not a config with no accounts.
+        if let Some(problem) = config_problem(&self.paths) {
+            self.say(&format!("baton: {problem}"));
+            return 1;
+        }
         if load_config(&self.paths).accounts.is_empty() {
             self.say(&format!("baton: {NO_ACCOUNTS}"));
             return 1;
@@ -647,9 +653,12 @@ impl Lead {
             host.start();
             self.poll_host = Some(host);
         }
-        // Housekeeping only.
-        prune_sessions(&self.paths, self.time(), 30);
         let snapshot = load_snapshot(&self.paths, self.time(), Want::default());
+        // Housekeeping only: what the policy says is old goes.
+        let cleaned = clean_up(&self.paths, &snapshot.policy, self.time());
+        if cleaned.total() > 0 {
+            self.log("cleaned up", json!(cleaned));
+        }
         // A chat whose model is known meets that model's limits; any other, the strictest.
         let states = states_for(&snapshot.states, self.model().as_deref(), snapshot.now);
         let pick = pick_start(&states, &snapshot.policy, &[]);
@@ -1015,6 +1024,13 @@ impl Lead {
                 "seven_day": reading.at("seven_day"),
             })));
         }
+        // What other sessions used of the same accounts while this one's turns ran is not its cost.
+        let since = samples.first().and_then(|sample| sample.at).unwrap_or(now);
+        let rises = read_rises(&self.paths, since, now);
+        let others = Others {
+            rises: &rises,
+            session: &id,
+        };
         let compact_at = read_session_file(&self.paths, &id, "compact.json")
             .and_then(|compact| ms_of(compact.at("at")))
             .unwrap_or(0);
@@ -1058,8 +1074,8 @@ impl Lead {
                 left: self.left.clone(),
                 compacted,
                 background_tasks: if tasks.is_null() { json!([]) } else { tasks.clone() },
-                cost: turn_cost(&samples, &snapshot.policy),
-                burn: Some(burn_rate(&samples, &snapshot.policy, now)),
+                cost: turn_cost(&samples, &others, &snapshot.policy),
+                burn: Some(burn_rate(&samples, &others, &snapshot.policy, now)),
             },
         });
         if event.as_deref() == Some("stop") {

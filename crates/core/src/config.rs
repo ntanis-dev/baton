@@ -7,6 +7,7 @@
 //! hooks resolve from `CLAUDE_CONFIG_DIR`; the name is a label the operator can change at any time
 //! (`names`: any printable text).
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 
@@ -14,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
 
-use crate::fsutil::{is_busy, sleep_ms, write_json_atomic};
+use crate::fsutil::{is_busy, sleep_ms, write_json_durable};
 use crate::json::{Get, Object, num};
 use crate::names::{clean_name, id_from_name, same_name, valid_name};
 use crate::paths::{Paths, is_account_id};
@@ -173,6 +174,14 @@ pub struct Policy {
     /// Keep what the operator sets (preferences, MCP servers, each folder's trust and approvals) the
     /// same on every account, in both directions.
     pub full_sync: bool,
+    /// The history's months that ended longer ago than this many days are removed (0: never).
+    pub history_days: f64,
+    /// The records of conversations not seen for this many days are removed.
+    pub session_days: f64,
+    /// The wrappers' logs not written for this many days are removed (0: never).
+    pub log_days: f64,
+    /// How many backups are kept, the newest ones (0: all of them).
+    pub backups_kept: f64,
 }
 
 impl Default for Policy {
@@ -199,12 +208,16 @@ impl Default for Policy {
             usage_poll_minutes: 30.0,
             status_line_usage: false,
             full_sync: true,
+            history_days: 180.0,
+            session_days: 30.0,
+            log_days: 14.0,
+            backups_kept: 50.0,
         }
     }
 }
 
 /// The policy's settings by name, in the order they are shown and written.
-pub const POLICY_KEYS: [&str; 21] = [
+pub const POLICY_KEYS: [&str; 25] = [
     "mode",
     "fiveHour",
     "weekly",
@@ -226,6 +239,10 @@ pub const POLICY_KEYS: [&str; 21] = [
     "usagePollMinutes",
     "statusLineUsage",
     "fullSync",
+    "historyDays",
+    "sessionDays",
+    "logDays",
+    "backupsKept",
 ];
 
 /// The settings that are true or false.
@@ -245,6 +262,10 @@ fn number_limits(key: &str) -> Option<(f64, f64)> {
         "countdownSeconds" => (0.0, 600.0),
         "settleMs" => (0.0, 60000.0),
         "usagePollMinutes" => (0.0, 1440.0),
+        "historyDays" => (0.0, 3650.0),
+        "sessionDays" => (1.0, 365.0),
+        "logDays" => (0.0, 365.0),
+        "backupsKept" => (0.0, 1000.0),
         _ => return None,
     })
 }
@@ -281,6 +302,10 @@ impl Policy {
             "reblockBackoffMinutes" => self.reblock_backoff_minutes,
             "settleMs" => self.settle_ms,
             "usagePollMinutes" => self.usage_poll_minutes,
+            "historyDays" => self.history_days,
+            "sessionDays" => self.session_days,
+            "logDays" => self.log_days,
+            "backupsKept" => self.backups_kept,
             _ => return None,
         })
     }
@@ -316,6 +341,10 @@ impl Policy {
                     "reblockBackoffMinutes" => &mut self.reblock_backoff_minutes,
                     "settleMs" => &mut self.settle_ms,
                     "usagePollMinutes" => &mut self.usage_poll_minutes,
+                    "historyDays" => &mut self.history_days,
+                    "sessionDays" => &mut self.session_days,
+                    "logDays" => &mut self.log_days,
+                    "backupsKept" => &mut self.backups_kept,
                     _ => return,
                 };
                 *slot = n;
@@ -412,10 +441,37 @@ pub struct Account {
     pub weekly: Option<f64>,
 }
 
+/// What config.json held that this Baton does not know (a note the operator wrote in, a setting of a
+/// later Baton): kept as it was and written back.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Unknown {
+    /// Keys of the file itself.
+    pub top: Object,
+    /// Settings of the policy.
+    pub policy: Object,
+    /// Keys of the accounts' entries, by account id.
+    pub accounts: BTreeMap<String, Object>,
+}
+
+/// The keys of config.json this Baton knows.
+const TOP_KEYS: [&str; 7] = [
+    "version",
+    "accounts",
+    "policy",
+    "endMethod",
+    "claudePath",
+    "syncKeys",
+    "syncProjectKeys",
+];
+
+/// The keys of an account's entry this Baton knows (`lastResort`: how a mark was once written).
+const ACCOUNT_KEYS: [&str; 6] = ["id", "name", "mark", "fiveHour", "weekly", "lastResort"];
+
 /// config.json, read.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {
-    /// The version of the file.
+    /// The version of the file as it was read: one above [`CONFIG_VERSION`] was written by a later
+    /// Baton, and is never saved over.
     pub version: u32,
     /// The accounts, in priority order.
     pub accounts: Vec<Account>,
@@ -430,6 +486,8 @@ pub struct Config {
     pub sync_keys: Vec<String>,
     /// The same for the keys of a folder's entry there (`syncProjectKeys`).
     pub sync_project_keys: Vec<String>,
+    /// What the file held that this Baton does not know.
+    pub unknown: Unknown,
 }
 
 impl Default for Config {
@@ -442,8 +500,17 @@ impl Default for Config {
             claude_path: None,
             sync_keys: Vec::new(),
             sync_project_keys: Vec::new(),
+            unknown: Unknown::default(),
         }
     }
+}
+
+/// The entries of `map` whose key is not one of `known`.
+fn unknown_of(map: &Object, known: &[&str]) -> Object {
+    map.iter()
+        .filter(|(key, _)| !known.contains(&key.as_str()))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
 }
 
 /// An account as config.json holds it, or None when the entry cannot be one.
@@ -476,7 +543,8 @@ fn normalize_account(raw: &Value) -> Option<Account> {
         if value.is_null() {
             return None;
         }
-        Some(loose_f64(value)).filter(|n| n.is_finite())
+        // A threshold is a percentage; anything else falls back to the policy's.
+        Some(loose_f64(value)).filter(|n| (1.0..=100.0).contains(n))
     };
     Some(Account {
         id,
@@ -490,6 +558,7 @@ fn normalize_account(raw: &Value) -> Option<Account> {
 /// A config from whatever config.json held: what is missing or invalid falls back to its default.
 pub fn normalize_config(raw: &Value) -> Config {
     let mut accounts: Vec<Account> = Vec::new();
+    let mut unknown = Unknown::default();
     for entry in raw
         .at("accounts")
         .as_array()
@@ -499,24 +568,42 @@ pub fn normalize_config(raw: &Value) -> Config {
         let Some(account) = normalize_account(entry) else {
             continue;
         };
+        // Ids name folders, and two that differ only in case are one folder on most disks.
         if !accounts
             .iter()
-            .any(|a| a.id == account.id || same_name(&a.name, &account.name))
+            .any(|a| a.id.eq_ignore_ascii_case(&account.id) || same_name(&a.name, &account.name))
         {
+            let extra = entry
+                .as_object()
+                .map(|entry| unknown_of(entry, &ACCOUNT_KEYS))
+                .unwrap_or_default();
+            if !extra.is_empty() {
+                unknown.accounts.insert(account.id.clone(), extra);
+            }
             accounts.push(account);
         }
     }
     let mut policy = Object::new();
     if let Some(settings) = raw.at("policy").as_object() {
         for (key, value) in settings {
-            // An unknown or out-of-range setting falls back to its default.
+            // An out-of-range setting falls back to its default; one this Baton does not know is
+            // kept as it is.
             if let Ok(checked) = check_policy_value(key, value) {
                 policy.insert(key.clone(), checked);
+            } else if !POLICY_KEYS.contains(&key.as_str()) {
+                unknown.policy.insert(key.clone(), value.clone());
             }
         }
     }
+    if let Some(top) = raw.as_object() {
+        unknown.top = unknown_of(top, &TOP_KEYS);
+    }
     Config {
-        version: CONFIG_VERSION,
+        version: raw
+            .at("version")
+            .as_u64()
+            .and_then(|version| u32::try_from(version).ok())
+            .unwrap_or(CONFIG_VERSION),
         accounts,
         policy,
         end_method: raw
@@ -526,6 +613,7 @@ pub fn normalize_config(raw: &Value) -> Config {
         claude_path: raw.text("claudePath").map(str::to_owned),
         sync_keys: names(raw.at("syncKeys")),
         sync_project_keys: names(raw.at("syncProjectKeys")),
+        unknown,
     }
 }
 
@@ -560,7 +648,9 @@ fn read_config_file(paths: &Paths) -> Result<Option<Value>, ConfigError> {
             Err(error) => return Err(ConfigError(format!("Cannot read {shown}: {error}"))),
         }
     };
-    let raw: Value = serde_json::from_str(&text).map_err(|error| {
+    // An editor's byte order mark is not part of the JSON.
+    let text = text.strip_prefix('\u{FEFF}').unwrap_or(&text);
+    let raw: Value = serde_json::from_str(text).map_err(|error| {
         ConfigError(format!(
             "{shown} is not valid JSON ({error}); fix it, or move it away to start over."
         ))
@@ -589,6 +679,17 @@ pub fn load_config_strict(paths: &Paths) -> Result<Config, ConfigError> {
     })
 }
 
+/// Why config.json cannot be used, in words for the operator; None when it can (or is not there yet).
+/// Whoever shows the accounts asks this first: a file that cannot be read reads as no accounts.
+pub fn config_problem(paths: &Paths) -> Option<String> {
+    load_config_strict(paths).err().map(|error| error.0)
+}
+
+/// Whether two account ids are the same: they name folders, so their case does not tell them apart.
+pub fn same_id(a: &str, b: &str) -> bool {
+    a.eq_ignore_ascii_case(b)
+}
+
 /// How [`find_account`] looks an account up.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum By {
@@ -600,14 +701,15 @@ pub enum By {
 
 /// An account by its name or id.
 pub fn find_account<'a>(config: &'a Config, key: &str, by: By) -> Option<&'a Account> {
+    let by_id = || config.accounts.iter().find(|a| same_id(&a.id, key));
     if by == By::Id {
-        return config.accounts.iter().find(|a| a.id == key);
+        return by_id();
     }
     config
         .accounts
         .iter()
         .find(|a| same_name(&a.name, key))
-        .or_else(|| config.accounts.iter().find(|a| a.id == key))
+        .or_else(by_id)
 }
 
 /// The name of the account `id`; the id itself when there is no such account.
@@ -615,7 +717,7 @@ pub fn name_of(config: &Config, id: &str) -> String {
     config
         .accounts
         .iter()
-        .find(|a| a.id == id)
+        .find(|a| same_id(&a.id, id))
         .map_or_else(|| id.to_owned(), |a| a.name.clone())
 }
 
@@ -635,13 +737,18 @@ pub fn config_json(config: &Config) -> Value {
             if let Some(n) = a.weekly {
                 out.insert("weekly".to_owned(), num(n));
             }
+            out.extend(config.unknown.accounts.get(&a.id).cloned().unwrap_or_default());
             Value::Object(out)
         })
         .collect();
+    let mut policy = config.policy.clone();
+    for (key, value) in &config.unknown.policy {
+        policy.entry(key.clone()).or_insert_with(|| value.clone());
+    }
     let mut out = Object::new();
-    out.insert("version".to_owned(), json!(CONFIG_VERSION));
+    out.insert("version".to_owned(), json!(config.version.max(CONFIG_VERSION)));
     out.insert("accounts".to_owned(), Value::Array(accounts));
-    out.insert("policy".to_owned(), Value::Object(config.policy.clone()));
+    out.insert("policy".to_owned(), Value::Object(policy));
     if config.end_method != EndMethod::Auto {
         out.insert("endMethod".to_owned(), json!(config.end_method.as_str()));
     }
@@ -654,12 +761,32 @@ pub fn config_json(config: &Config) -> Value {
     if !config.sync_project_keys.is_empty() {
         out.insert("syncProjectKeys".to_owned(), json!(config.sync_project_keys));
     }
+    out.extend(config.unknown.top.clone());
     Value::Object(out)
 }
 
-/// Writes config.json.
+/// Where the config as it was before the last save is kept.
+pub fn config_backup(paths: &Paths) -> std::path::PathBuf {
+    paths.root.join("config.json.bak")
+}
+
+/// Writes config.json, keeping the file as it was beside it (`config.json.bak`). A config a later
+/// Baton wrote is not saved over: this one does not know everything that is in it.
 pub fn save_config(paths: &Paths, config: &Config) -> io::Result<()> {
-    write_json_atomic(&paths.config, &config_json(config))
+    if config.version > CONFIG_VERSION {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "{} was written by a later Baton (version {}, this one writes {CONFIG_VERSION}); update Baton to change it.",
+                paths.config.display(),
+                config.version
+            ),
+        ));
+    }
+    if paths.config.exists() {
+        fs::copy(&paths.config, config_backup(paths))?;
+    }
+    write_json_durable(&paths.config, &config_json(config))
 }
 
 /// The policy in force: the defaults with the operator's changes.
@@ -782,6 +909,7 @@ mod tests {
         );
         assert_eq!(config.end_method, EndMethod::Kill);
         assert_eq!(config.claude_path.as_deref(), Some("C:/claude.exe"));
+        assert_eq!(Value::Object(config.unknown.policy.clone()), json!({ "nope": 1 }));
         let policy = effective_policy(&config);
         assert_eq!(policy.mode, Mode::Order);
         assert_eq!(policy.start_reserve, 25.0);
@@ -811,7 +939,15 @@ mod tests {
         assert_eq!(find_account(&config, "WORK", By::Name).unwrap().id, "a1");
         assert_eq!(find_account(&config, "work", By::Id).unwrap().id, "work");
         assert_eq!(find_account(&config, "a1", By::Name).unwrap().name, "Work");
-        assert!(find_account(&config, "Work", By::Id).is_none());
+        assert!(
+            find_account(&config, "Spare", By::Id).is_none(),
+            "a name is not an id"
+        );
+        assert_eq!(
+            find_account(&config, "WORK", By::Id).unwrap().id,
+            "work",
+            "an id names a folder: in any case"
+        );
         assert_eq!(name_of(&config, "work"), "Spare");
         assert_eq!(name_of(&config, "gone"), "gone");
     }
@@ -858,7 +994,71 @@ mod tests {
             let error = load_config_strict(&paths).unwrap_err().0;
             assert!(error.contains("is not a Baton config"), "{not_a_config}: {error}");
         }
+        assert!(config_problem(&paths).unwrap().contains("is not a Baton config"));
         fs::write(&paths.config, "{}").unwrap();
         assert_eq!(load_config_strict(&paths), Ok(Config::default()));
+        assert_eq!(config_problem(&paths), None);
+        // A byte order mark an editor put first is not part of the JSON.
+        let marked = format!("{}{}", '\u{FEFF}', r#"{"accounts": [{ "name": "work" }]}"#);
+        fs::write(&paths.config, marked).unwrap();
+        assert_eq!(load_config(&paths).accounts.len(), 1);
+    }
+
+    #[test]
+    fn a_save_keeps_what_this_baton_does_not_know_and_the_file_as_it_was() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = baton_paths(dir.path());
+        fs::create_dir_all(&paths.root).unwrap();
+        let written = json!({
+            "version": 1,
+            "note": "the spare is my partner's",
+            "accounts": [
+                { "id": "work", "name": "Work", "mark": "normal", "fiveHour": 400, "team": "infra" },
+                { "id": "WORK", "name": "Shouting" },
+                { "id": "spare", "name": "Spare", "weekly": 0 }
+            ],
+            "policy": { "mode": "order", "laterSetting": [1, 2], "weekly": 500 }
+        });
+        fs::write(&paths.config, serde_json::to_string(&written).unwrap()).unwrap();
+        let mut config = load_config_strict(&paths).unwrap();
+        // Ids that differ only in case are one folder: the first stays. A threshold that is no
+        // percentage falls back to the policy's.
+        let ids: Vec<&str> = config.accounts.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(ids, ["work", "spare"]);
+        assert_eq!(
+            (config.accounts[0].five_hour, config.accounts[1].weekly),
+            (None, None)
+        );
+        assert_eq!(find_account(&config, "SPARE", By::Id).unwrap().id, "spare");
+        assert_eq!(name_of(&config, "WORK"), "Work");
+        config.accounts[1].name = "Other".into();
+        save_config(&paths, &config).unwrap();
+        let read = |file: &std::path::Path| -> Value {
+            serde_json::from_str(&fs::read_to_string(file).unwrap()).unwrap()
+        };
+        let saved = read(&paths.config);
+        assert_eq!(saved["note"], "the spare is my partner's");
+        assert_eq!(saved["accounts"][0]["team"], "infra");
+        assert_eq!(saved["accounts"][1]["name"], "Other");
+        assert_eq!(
+            saved["policy"],
+            json!({ "mode": "order", "laterSetting": [1, 2] })
+        );
+        assert_eq!(
+            read(&config_backup(&paths)),
+            written,
+            "the file as it was before the save"
+        );
+        // What a later Baton wrote is read, and never saved over.
+        let later_text = r#"{ "version": 2, "accounts": [{ "name": "work" }] }"#;
+        fs::write(&paths.config, later_text).unwrap();
+        let later = load_config_strict(&paths).unwrap();
+        assert_eq!((later.version, later.accounts.len()), (2, 1));
+        let refused = save_config(&paths, &later).unwrap_err().to_string();
+        assert!(
+            refused.contains("written by a later Baton (version 2"),
+            "{refused}"
+        );
+        assert_eq!(fs::read_to_string(&paths.config).unwrap(), later_text);
     }
 }

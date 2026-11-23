@@ -158,6 +158,21 @@ pub fn local_date(ms: Ms) -> String {
     format!("{:04}-{:02}-{:02}", at.year, at.month, at.day)
 }
 
+/// The local dates of the `days` days that end with the day of `now`, oldest first. They are stepped
+/// through by the calendar: a day the clock changes on is not 24 hours long, and a step of 24 hours
+/// can skip a date or name one twice.
+pub fn local_days(now: Ms, days: i64) -> Vec<String> {
+    let today = Timestamp::from_millisecond(now)
+        .unwrap_or(Timestamp::UNIX_EPOCH)
+        .to_zoned(TimeZone::system())
+        .date();
+    (0..days.max(1))
+        .rev()
+        .filter_map(|back| today.checked_sub(Span::new().try_days(back).ok()?).ok())
+        .map(|date| format!("{:04}-{:02}-{:02}", date.year(), date.month(), date.day()))
+        .collect()
+}
+
 /// Whether two moments fall on the same local day.
 pub fn same_local_day(a: Ms, b: Ms) -> bool {
     let (x, y) = (local(a), local(b));
@@ -217,6 +232,23 @@ mod tests {
         assert!(!same_local_day(at, at + DAY));
         assert_eq!(weekday_of(2026, 11, 15), Some(0));
         assert_eq!(weekday_of(2026, 2, 30), None);
+    }
+
+    #[test]
+    fn the_days_of_a_period_are_calendar_days() {
+        let noon = local_ms(2026, 3, 10, 12, 0).unwrap();
+        assert_eq!(local_days(noon, 3), ["2026-03-08", "2026-03-09", "2026-03-10"]);
+        assert_eq!(local_days(noon, 1), ["2026-03-10"]);
+        assert_eq!(local_days(noon, 0), ["2026-03-10"]);
+        // Across the months where the clocks change (wherever this runs), every date is there once,
+        // whatever the time of day.
+        for (month, day, hour) in [(4, 5, 0), (4, 5, 23), (11, 10, 0), (11, 10, 23)] {
+            let at = local_ms(2026, month, day, hour, 30).unwrap();
+            let days = local_days(at, 40);
+            assert_eq!(days.len(), 40);
+            assert_eq!(days.last().unwrap(), &local_date(at));
+            assert!(days.windows(2).all(|pair| pair[0] < pair[1]), "{days:?}");
+        }
     }
 
     #[test]

@@ -396,6 +396,95 @@ pub fn record_reading(
     }
 }
 
+/// A rise of an account's use, and the session whose status line reported it first.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Rise {
+    /// When it was recorded.
+    pub at: Ms,
+    /// The account.
+    pub account: String,
+    /// The window.
+    pub window: Window,
+    /// By how many percent.
+    pub by: f64,
+    /// The session that reported it; None for a poll.
+    pub session: Option<String>,
+}
+
+/// The rises recorded between two moments, oldest first, from the history of the readings. Each
+/// change of a window is one line there, with the session that reported it.
+pub fn read_rises(paths: &Paths, from: Ms, to: Ms) -> Vec<Rise> {
+    // The reading before `from` is what the first rise is measured against.
+    let mut lines: Vec<(Ms, Value)> = crate::clock::utc_months(from - crate::clock::DAY, to)
+        .into_iter()
+        .flat_map(|month| crate::fsutil::read_json_lines(&history_file(paths, "readings", month)))
+        .filter_map(|line| Some((parse_ms(line.text("at")?)?, line)))
+        .filter(|(at, _)| *at <= to)
+        .collect();
+    lines.sort_by_key(|(at, _)| *at);
+    let mut last: BTreeMap<(String, &'static str), (f64, Option<String>)> = BTreeMap::new();
+    let mut out = Vec::new();
+    for (at, line) in lines {
+        let (Some(account), Some(window), Some(used)) = (
+            line.text("account"),
+            line.text("window").and_then(Window::parse),
+            line.number("used"),
+        ) else {
+            continue;
+        };
+        let resets = line.text("resetsAt").map(str::to_owned);
+        let before = last.insert((account.to_owned(), window.as_str()), (used, resets.clone()));
+        if let Some((was, period)) = before
+            && at > from
+            && used > was
+            && same_period(period.as_deref(), resets.as_deref())
+        {
+            out.push(Rise {
+                at,
+                account: account.to_owned(),
+                window,
+                by: used - was,
+                session: line.text("session").map(str::to_owned),
+            });
+        }
+    }
+    out
+}
+
+/// What other sessions used of the accounts a session ran on: an account's meter is every session's
+/// together, so what they added while a turn of this one ran is not that turn's cost.
+#[derive(Clone, Copy, Debug)]
+pub struct Others<'a> {
+    /// The rises of the time in question.
+    pub rises: &'a [Rise],
+    /// The session whose own use is being worked out.
+    pub session: &'a str,
+}
+
+impl Others<'_> {
+    /// Nothing known of other sessions.
+    pub const NONE: Others<'static> = Others {
+        rises: &[],
+        session: "",
+    };
+
+    /// What other sessions added to `window` of `account` after `after`, up to and at `until`. A
+    /// rise a poll reported is nobody's in particular, and stays with the session.
+    pub fn between(&self, account: Option<&str>, window: Window, after: Ms, until: Ms) -> f64 {
+        self.rises
+            .iter()
+            .filter(|rise| {
+                Some(rise.account.as_str()) == account
+                    && rise.window == window
+                    && rise.at > after
+                    && rise.at <= until
+                    && rise.session.as_deref().is_some_and(|other| other != self.session)
+            })
+            .map(|rise| rise.by)
+            .sum()
+    }
+}
+
 /// The latest reading of each of these accounts that has one, by id.
 pub fn load_readings(paths: &Paths, ids: &[String]) -> BTreeMap<String, Reading> {
     ids.iter()
@@ -1088,6 +1177,64 @@ mod tests {
         let stored = read_reading(&paths, "work").unwrap();
         assert_eq!(stored.five_hour.unwrap().used, 40.0);
         assert_eq!(stored.seven_day.unwrap().used, 40.0);
+    }
+
+    #[test]
+    fn rises_are_read_from_the_history_with_who_reported_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = baton_paths(dir.path());
+        let record = |at: Ms, used: f64, session: Option<&str>| {
+            record_reading(
+                &paths,
+                "work",
+                &PerWindow {
+                    five_hour: sample(used, Some(T0 + DAY)),
+                    seven_day: None,
+                },
+                RecordOptions {
+                    session: session.map(str::to_owned),
+                    source: if session.is_some() { "statusline" } else { "poll" }.to_owned(),
+                    refresh_ms: 0,
+                    ..RecordOptions::at(at)
+                },
+            );
+        };
+        record(T0, 10.0, Some("one"));
+        record(T0 + 1000, 12.0, Some("two"));
+        record(T0 + 2000, 12.0, Some("one"));
+        record(T0 + 3000, 15.0, None);
+        record(T0 + 4000, 16.0, Some("one"));
+        let rises = read_rises(&paths, T0, T0 + HOUR);
+        let told: Vec<(Ms, f64, Option<&str>)> = rises
+            .iter()
+            .map(|rise| (rise.at - T0, rise.by, rise.session.as_deref()))
+            .collect();
+        // The first reading is no rise: nothing says what it rose from.
+        assert_eq!(
+            told,
+            [
+                (1000, 2.0, Some("two")),
+                (3000, 3.0, None),
+                (4000, 1.0, Some("one"))
+            ]
+        );
+        assert!(
+            rises
+                .iter()
+                .all(|rise| rise.account == "work" && rise.window == Window::FiveHour)
+        );
+        // Only what was recorded after `from`, measured against the reading before it.
+        let later = read_rises(&paths, T0 + 3500, T0 + HOUR);
+        assert_eq!(later.len(), 1);
+        assert_eq!(later[0].by, 1.0);
+        let others = Others {
+            rises: &rises,
+            session: "one",
+        };
+        assert_eq!(others.between(Some("work"), Window::FiveHour, T0, T0 + HOUR), 2.0);
+        assert_eq!(others.between(Some("work"), Window::SevenDay, T0, T0 + HOUR), 0.0);
+        assert_eq!(others.between(None, Window::FiveHour, T0, T0 + HOUR), 0.0);
+        assert!(read_rises(&baton_paths(dir.path().join("none")), T0, T0 + HOUR).is_empty());
     }
 
     #[test]

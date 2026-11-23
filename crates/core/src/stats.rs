@@ -10,14 +10,14 @@ use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use serde_json::Value;
 
-use crate::clock::{DAY, Ms, iso, local_date, ms_of, parse_ms, utc_months};
+use crate::clock::{DAY, Ms, iso, local_date, local_days, ms_of, parse_ms, utc_months};
 use crate::config::{Config, Mark, Policy, name_of, thresholds};
 use crate::fsutil::read_json_lines;
 use crate::json::{Get, ser_num, ser_opt_num};
 use crate::paths::Paths;
 use crate::policy::turn_cost;
 use crate::sessions::read_turn_samples;
-use crate::usage::{history_file, same_period};
+use crate::usage::{Others, history_file, read_rises, same_period};
 use crate::window::PerWindow;
 
 /// The history of `kind` between two moments, oldest first.
@@ -207,20 +207,11 @@ pub fn compute_stats(paths: &Paths, config: &Config, policy: &Policy, now: Ms, d
     // Weekly windows that reset in the period started up to a week earlier.
     let readings = read_history(paths, "readings", since - 7 * DAY, now);
     let events = read_history(paths, "events", since, now);
+    // What a session used is its account's rise less what the other sessions on it added meanwhile.
+    let rises = read_rises(paths, since, now);
     let day_of = |line: &Value| ms_of(line.at("at")).map(local_date).unwrap_or_default();
     let kind = |e: &Value, kind: &str| e.text("type") == Some(kind);
-    let mut dates: Vec<String> = Vec::new();
-    let mut t = now - (days - 1) * DAY;
-    while t <= now + 1 {
-        let date = local_date(t);
-        if !dates.contains(&date) {
-            dates.push(date);
-        }
-        t += DAY;
-    }
-    if !dates.contains(&local_date(now)) {
-        dates.push(local_date(now));
-    }
+    let dates = local_days(now, days);
     let per_day = || {
         dates
             .iter()
@@ -361,7 +352,14 @@ pub fn compute_stats(paths: &Paths, config: &Config, policy: &Policy, now: Ms, d
                     .collect(),
                 refusals: mine.iter().filter(|e| kind(e, "refusal")).count(),
                 turns: samples.len(),
-                cost_per_turn: turn_cost(&samples, policy),
+                cost_per_turn: turn_cost(
+                    &samples,
+                    &Others {
+                        rises: &rises,
+                        session: id,
+                    },
+                    policy,
+                ),
             }
         })
         .collect();

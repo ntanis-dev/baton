@@ -20,10 +20,11 @@ use baton_claude::poll_host::{PollHost, PollHostOptions};
 use baton_claude::poller::{Poller, PollerOptions};
 use baton_core::claude_path::{ClaudeNotFound, Launcher, resolve_claude};
 use baton_core::clock::now_ms;
-use baton_core::config::{load_config, name_of};
+use baton_core::config::{effective_policy, load_config, name_of};
 use baton_core::env::Env;
 use baton_core::lines::Line;
 use baton_core::paths::{Paths, profile_env};
+use baton_core::retention::clean_up;
 use baton_core::term::color_depth;
 use baton_core::theme::{GlyphSet, pick_glyphs};
 use baton_profile::profile::{LinkOptions, link_profile};
@@ -324,6 +325,8 @@ pub fn run_menu(options: MenuOptions) -> io::Result<i32> {
     let splash = splash.unwrap_or(env.get("BATON_SPLASH") != Some("off"));
     let mouse = mouse.unwrap_or(env.get("BATON_MOUSE") != Some("off")) && tty;
     let now: Clock = now.unwrap_or_else(|| Arc::new(now_ms));
+    // Housekeeping: what the policy says is old goes when the menu starts, as when a wrapper does.
+    clean_up(&paths, &effective_policy(&load_config(&paths)), now());
     let usage = Arc::new(Mutex::new(Usage::default()));
     let refresh: RefreshFn = refresh.unwrap_or_else(|| {
         let (usage, paths, env, launcher) =

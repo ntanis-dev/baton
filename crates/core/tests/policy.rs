@@ -15,7 +15,7 @@ use baton_core::policy::{
     decide_turn_end, decide_wait, earliest, hop_run, hours_to_block, pick_hop, pick_spread, pick_start,
     states_for, turn_cost,
 };
-use baton_core::usage::{Reading, Rejection, Rejections, TurnSample};
+use baton_core::usage::{Others, Reading, Rejection, Rejections, Rise, TurnSample};
 use baton_core::window::{Limit, PerWindow, Window};
 use serde_json::{Value, json};
 
@@ -666,12 +666,15 @@ fn turn_cost_moving_average_of_per_turn_deltas_skipping_resets_and_other_account
         sample(10 * M, "b", 50.0, "R1"),
         sample(5 * M, "b", 52.0, "R1"),
     ];
-    let cost = turn_cost(&samples, &policy);
+    let cost = turn_cost(&samples, &Others::NONE, &policy);
     // a: 4, 6, (reset), 4; then b: 2 -> last five: 4, 6, 4, 2
     assert_eq!(cost.five_hour, Some((4.0 + 6.0 + 4.0 + 2.0) / 4.0));
-    assert_eq!(turn_cost(&[sample(0, "a", 10.0, "R1")], &policy).five_hour, None);
     assert_eq!(
-        turn_cost(&[], &policy),
+        turn_cost(&[sample(0, "a", 10.0, "R1")], &Others::NONE, &policy).five_hour,
+        None
+    );
+    assert_eq!(
+        turn_cost(&[], &Others::NONE, &policy),
         PerWindow {
             five_hour: None,
             seven_day: None
@@ -681,7 +684,55 @@ fn turn_cost_moving_average_of_per_turn_deltas_skipping_resets_and_other_account
         cost_samples: 2.0,
         ..Policy::default()
     };
-    assert_eq!(turn_cost(&samples, &last_two).five_hour, Some(3.0));
+    assert_eq!(turn_cost(&samples, &Others::NONE, &last_two).five_hour, Some(3.0));
+}
+
+#[test]
+fn turn_cost_and_burn_rate_leave_out_what_other_sessions_added_to_the_account_meanwhile() {
+    let policy = Policy::default();
+    // The account's 5-hour meter went from 10 to 20 over two turns of this session.
+    let samples = vec![
+        sample(50 * M, "a", 10.0, "R1"),
+        sample(40 * M, "a", 14.0, "R1"),
+        sample(30 * M, "a", 20.0, "R1"),
+    ];
+    let rise = |ago: Ms, by: f64, session: Option<&str>, account: &str| Rise {
+        at: NOW - ago,
+        account: account.to_owned(),
+        window: Window::FiveHour,
+        by,
+        session: session.map(str::to_owned),
+    };
+    let rises = vec![
+        // Another session added 1 during the first turn and 4 during the second.
+        rise(45 * M, 1.0, Some("other"), "a"),
+        rise(35 * M, 4.0, Some("other"), "a"),
+        // What this session reported itself, what a poll reported, and what happened on another
+        // account or outside the turns are not taken off.
+        rise(44 * M, 2.0, Some("mine"), "a"),
+        rise(43 * M, 1.0, None, "a"),
+        rise(42 * M, 9.0, Some("other"), "b"),
+        rise(55 * M, 9.0, Some("other"), "a"),
+    ];
+    let others = Others {
+        rises: &rises,
+        session: "mine",
+    };
+    // 4 - 1 and 6 - 4, where the meter alone says 4 and 6.
+    assert_eq!(
+        turn_cost(&samples, &others, &policy).five_hour,
+        Some((3.0 + 2.0) / 2.0)
+    );
+    assert_eq!(turn_cost(&samples, &Others::NONE, &policy).five_hour, Some(5.0));
+    // 10 in twenty minutes is 30 an hour; 5 of them were this session's: 15 an hour.
+    assert_eq!(burn_rate(&samples, &others, &policy, NOW).five_hour, Some(15.0));
+    // More than the meter rose is no negative cost.
+    let all = [rise(45 * M, 30.0, Some("other"), "a")];
+    let more = Others {
+        rises: &all,
+        session: "mine",
+    };
+    assert_eq!(turn_cost(&samples[..2], &more, &policy).five_hour, Some(0.0));
 }
 
 /// A session's reading `ago` before now on account "a", its 5-hour window resetting `jitter` after
@@ -709,9 +760,9 @@ fn turn_cost_and_burn_rate_a_reset_time_moving_by_seconds_between_readings_is_th
     .iter()
     .map(TurnSample::from_value)
     .collect();
-    assert_eq!(turn_cost(&samples, &policy).five_hour, Some(13.0));
+    assert_eq!(turn_cost(&samples, &Others::NONE, &policy).five_hour, Some(13.0));
     assert_eq!(
-        burn_rate(&samples, &policy, NOW).five_hour,
+        burn_rate(&samples, &Others::NONE, &policy, NOW).five_hour,
         Some(26.0 / (20.0 / 60.0))
     );
     let reset: Vec<TurnSample> = [
@@ -721,7 +772,7 @@ fn turn_cost_and_burn_rate_a_reset_time_moving_by_seconds_between_readings_is_th
     .iter()
     .map(TurnSample::from_value)
     .collect();
-    assert_eq!(turn_cost(&reset, &policy).five_hour, None);
+    assert_eq!(turn_cost(&reset, &Others::NONE, &policy).five_hour, None);
 }
 
 #[test]
@@ -740,7 +791,7 @@ fn burn_rate_and_hours_to_block() {
     .iter()
     .map(TurnSample::from_value)
     .collect();
-    let burn = burn_rate(&samples, &policy, NOW);
+    let burn = burn_rate(&samples, &Others::NONE, &policy, NOW);
     assert_eq!(burn.five_hour, Some(30.0));
     assert_eq!(burn.seven_day, Some(2.0));
     let s = one(reading((70.0, 3 * H), (51.0, 3 * D)));
@@ -764,7 +815,7 @@ fn burn_rate_and_hours_to_block() {
     );
     // Readings older than the burn window say nothing.
     assert_eq!(
-        burn_rate(&samples, &policy, NOW + 2 * H),
+        burn_rate(&samples, &Others::NONE, &policy, NOW + 2 * H),
         PerWindow {
             five_hour: None,
             seven_day: None
@@ -993,6 +1044,49 @@ fn planned_hop_never_while_subagents_or_a_workflow_run_nor_within_min_stay_nor_i
         ..Policy::default()
     };
     assert_eq!(stop_under(&s, &order, costing(8.0, 1.0)).reason(), "order-mode");
+}
+
+#[test]
+fn an_account_over_its_threshold_is_left_at_the_turn_end_while_another_is_open() {
+    // 92% of the 5-hour window, over the 90 that is set: no turn was refused, no cost is known yet.
+    let over = || Some(reading((92.0, 2 * H), (20.0, 3 * D)));
+    let s = two_accounts(over(), Some(reading((10.0, H), (10.0, 3 * D))));
+    let moved = hop("other", "threshold", vec![Window::FiveHour]);
+    assert_eq!(stop(&s, SessionFacts::default()), moved);
+    // The minimum stay holds back a forecast, not this; and it holds in order mode too.
+    let arrived = SessionFacts {
+        arrived_at: Some(NOW - 10 * M),
+        ..SessionFacts::default()
+    };
+    assert_eq!(stop(&s, arrived), moved);
+    let order = Policy {
+        mode: Mode::Order,
+        ..Policy::default()
+    };
+    assert_eq!(stop_under(&s, &order, SessionFacts::default()), moved);
+    // What the operator chose and work in the background still hold it.
+    let stayed = SessionFacts {
+        stay_until: Some(NOW + H),
+        ..SessionFacts::default()
+    };
+    assert_eq!(stop(&s, stayed).kind(), "none");
+    let vetoed = SessionFacts {
+        veto_until: Some(NOW + M),
+        ..SessionFacts::default()
+    };
+    assert_eq!(stop(&s, vetoed).reason(), "vetoed");
+    let working = SessionFacts {
+        background_tasks: json!([{ "type": "subagent", "status": "running" }]),
+        ..SessionFacts::default()
+    };
+    assert_eq!(stop(&s, working).reason(), "busy");
+    // Nowhere open to go: it stays, and so does a run of hops that has only left accounts behind it
+    // that are over theirs too.
+    let nowhere = two_accounts(over(), over());
+    assert_eq!(stop(&nowhere, SessionFacts::default()).kind(), "none");
+    // Under its threshold nothing of this applies.
+    let under = two_accounts(Some(reading((89.0, 2 * H), (20.0, 3 * D))), None);
+    assert_eq!(stop(&under, SessionFacts::default()).reason(), "stay");
 }
 
 #[test]

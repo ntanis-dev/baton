@@ -6,15 +6,15 @@
 
 use std::collections::BTreeMap;
 
-use baton_core::clock::{Ms, ms_of};
+use baton_core::clock::{DAY, Ms, ms_of};
 use baton_core::config::{Config, Policy, name_of};
 use baton_core::json::Get;
 use baton_core::paths::Paths;
 use baton_core::policy::{AccountState, burn_rate, pick_start, turn_cost};
 use baton_core::sessions::{read_session_file, read_turn_samples};
-use baton_core::state::{PollSnapshot, Want, load_snapshot};
+use baton_core::state::{PollSnapshot, Snapshot, Want, load_snapshot};
 use baton_core::stats::{HopView, Stats, compute_stats};
-use baton_core::usage::Reading;
+use baton_core::usage::{Others, Reading, Rise, read_rises};
 use baton_core::window::PerWindow;
 use baton_profile::copies::read_conflicts;
 use baton_profile::sync::read_questions;
@@ -135,12 +135,13 @@ fn first_text(key: &str, records: &[&Value]) -> Option<String> {
 fn session_info(
     paths: &Paths,
     id: &str,
-    now: Ms,
-    policy: &Policy,
-    config: &Config,
+    snapshot: &Snapshot,
     wrapper: Option<&Value>,
     hops: Vec<HopView>,
+    rises: &[Rise],
 ) -> SessionInfo {
+    let (now, policy, config) = (snapshot.now, &snapshot.policy, &snapshot.config);
+    let others = Others { rises, session: id };
     let read = |name: &str| read_session_file(paths, id, name).unwrap_or(Value::Null);
     let (start, live, turn, end) = (
         read("start.json"),
@@ -176,8 +177,8 @@ fn session_info(
         error: turn.text("error").map(str::to_owned),
         model: first_text("model", &[&live, &start]),
         background_tasks: turn.at("backgroundTasks").as_array().cloned().unwrap_or_default(),
-        cost: turn_cost(&samples, policy),
-        burn: burn_rate(&samples, policy, now),
+        cost: turn_cost(&samples, &others, policy),
+        burn: burn_rate(&samples, &others, policy, now),
         turns: samples.len(),
         hops,
         // Sessions name their account by id; what shows is its current name.
@@ -200,6 +201,8 @@ pub fn load_menu_data(paths: &Paths, now: Ms) -> MenuData {
         },
     );
     let stats = compute_stats(paths, &snapshot.config, &snapshot.policy, now, 7);
+    // What each session used is its account's rise less what the other sessions on it added.
+    let rises = read_rises(paths, now - 7 * DAY, now);
     let mut ids: Vec<String> = Vec::new();
     let mut wrappers: Vec<(String, &Value)> = Vec::new();
     for w in snapshot.wrappers.iter().flatten() {
@@ -236,7 +239,7 @@ pub fn load_menu_data(paths: &Paths, now: Ms) -> MenuData {
                 .find(|x| &x.id == id)
                 .map(|x| x.hops.clone())
                 .unwrap_or_default();
-            session_info(paths, id, now, &snapshot.policy, &snapshot.config, wrapper, hops)
+            session_info(paths, id, &snapshot, wrapper, hops, &rises)
         })
         .collect();
     sessions.sort_by(|a, b| {

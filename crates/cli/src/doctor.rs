@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use baton_claude::auth::auth_status;
 use baton_core::claude_path::{Launcher, find_on_path, resolve_claude};
 use baton_core::clock::Ms;
-use baton_core::config::{load_config, name_of};
+use baton_core::config::{config_problem, load_config, name_of};
 use baton_core::env::Env;
 use baton_core::format::NO_POLLER;
 use baton_core::paths::{Paths, profile_dir, profile_env, same_path};
@@ -152,6 +152,10 @@ pub fn run_doctor(options: &DoctorOptions<'_>) -> Report {
         Some(true),
         format!("{} ({})", env!("CARGO_PKG_VERSION"), exe.display()),
     );
+    // A config that cannot be read shows as no accounts everywhere else: here is why.
+    if let Some(problem) = config_problem(paths) {
+        add("config.json", Some(false), problem);
+    }
     let config = load_config(paths);
     let mut launcher = None;
     match resolve_claude(config.claude_path.as_deref(), env, Some(&paths.home)) {

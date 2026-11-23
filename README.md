@@ -89,7 +89,10 @@ Baton watches each turn end and decides what to do:
   conversation resumes on the next account, with a note telling Claude it was moved and why. The note names no
   account.
 - **An account is about to run out.** Baton estimates what a turn costs and moves between turns when the next one would
-  not fit, so you never meet a refusal halfway through. It never moves while subagents or a workflow are running.
+  not fit, so you never meet a refusal halfway through. It never moves while subagents or a workflow are running. The
+  estimate is of this conversation alone: what your other sessions on the same account used meanwhile is left out.
+- **An account is over its threshold.** It is left at the end of the turn, as soon as another account is open, without
+  waiting for a refusal. A key during the countdown keeps the conversation where it is.
 - **After a compaction**, the context is small and moving is cheap, so Baton rebalances if the account would run out
   within the hour and another one has clearly more room.
 - **Every account is blocked.** Baton shows who is back first, waits with a live countdown, and resumes there.
@@ -275,6 +278,8 @@ renamed or signed in, and when you ask (`r` in the menu, or `baton usage --refre
 
 ```
 ~/.baton/config.json              accounts in order (id, name, mark, thresholds), policy
+~/.baton/config.json.bak          the config as it was before the last change
+~/.baton/run/                     the files Baton's locks are taken on (they hold nothing)
 ~/.baton/accounts/<id>/           the profiles (CLAUDE_CONFIG_DIR)
 ~/.baton/usage/<id>.json          latest reading per account and window, with its source
 ~/.baton/poll/                    the usage check's state, lease and requests
@@ -286,6 +291,16 @@ renamed or signed in, and when you ask (`r` in the menu, or `baton usage --refre
 ~/.baton/copies.json, conflicts.json   what was last copied into each profile, and copy conflicts
 ~/.baton/sync.json                what the accounts agree on, what Baton last saw in each, open questions
 ```
+
+What you write into `config.json` yourself stays: a key Baton does not know is kept as it is. A file that cannot be
+read (a comma too many after a hand edit) is never saved over as an empty one: `baton`, the status line and
+`baton doctor` say what is wrong with it, and `config.json.bak` has the last version that worked.
+
+These records do not grow for ever. When `baton` or the menu starts, what is old goes: the history's months that ended
+more than 180 days ago (`baton policy --history-days <n>`, `0` keeps them), the records of conversations not seen for
+30 days (`--session-days`), wrappers' logs older than 14 days (`--log-days`), all but the newest 50 backups
+(`--backups-kept`), and the records of wrappers that no longer run. Claude Code's own transcripts and memory are never
+touched.
 
 </details>
 

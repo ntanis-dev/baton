@@ -11,8 +11,8 @@ use crate::clock::{HOUR, MINUTE, Ms, parse_ms};
 use crate::config::{Account, Mark, Mode, Policy, thresholds};
 use crate::json::Get;
 use crate::usage::{
-    LIMIT_ERRORS, Reading, Rejection, Rejections, TurnSample, WindowReading, all_weekly, covers, limit_scope,
-    no_five_hour, own_weekly, same_model, same_period,
+    LIMIT_ERRORS, Others, Reading, Rejection, Rejections, TurnSample, WindowReading, all_weekly, covers,
+    limit_scope, no_five_hour, own_weekly, same_model, same_period,
 };
 use crate::window::{Limit, PerWindow, WINDOWS, Window};
 
@@ -674,8 +674,9 @@ pub fn pick_spread(states: &[AccountState], policy: &Policy, running_cost: &BTre
 
 /// A session's cost per turn in each window: the moving average (last costSamples) of the used-%
 /// deltas between consecutive turn-end readings of that session on the same account and window period
-/// (a reset in between, or a drop, is skipped). None where there is no sample yet.
-pub fn turn_cost(samples: &[TurnSample], policy: &Policy) -> PerWindow<Option<f64>> {
+/// (a reset in between, or a drop, is skipped), less what other sessions added to the account during
+/// the turn. None where there is no sample yet.
+pub fn turn_cost(samples: &[TurnSample], others: &Others<'_>, policy: &Policy) -> PerWindow<Option<f64>> {
     PerWindow::from_fn(|w| {
         let mut deltas = Vec::new();
         for pair in samples.windows(2) {
@@ -689,7 +690,11 @@ pub fn turn_cost(samples: &[TurnSample], policy: &Policy) -> PerWindow<Option<f6
             if !same_period(x.resets_at.as_deref(), y.resets_at.as_deref()) || y.used < x.used {
                 continue;
             }
-            deltas.push(y.used - x.used);
+            let theirs = match (a.at, b.at) {
+                (Some(after), Some(until)) => others.between(a.account.as_deref(), w, after, until),
+                _ => 0.0,
+            };
+            deltas.push((y.used - x.used - theirs).max(0.0));
         }
         let keep = (policy.cost_samples.max(0.0) as usize).min(deltas.len());
         let recent = &deltas[deltas.len() - keep..];
@@ -698,8 +703,14 @@ pub fn turn_cost(samples: &[TurnSample], policy: &Policy) -> PerWindow<Option<f6
 }
 
 /// The session's recent burn rate (% per hour) in each window: from the first to the last of its
-/// readings within burnWindowMinutes on the latest account and window period.
-pub fn burn_rate(samples: &[TurnSample], policy: &Policy, now: Ms) -> PerWindow<Option<f64>> {
+/// readings within burnWindowMinutes on the latest account and window period, less what other sessions
+/// added to the account meanwhile.
+pub fn burn_rate(
+    samples: &[TurnSample],
+    others: &Others<'_>,
+    policy: &Policy,
+    now: Ms,
+) -> PerWindow<Option<f64>> {
     let since = now - (policy.burn_window_minutes * MINUTE as f64) as Ms;
     PerWindow::from_fn(|w| {
         let points: Vec<&TurnSample> = samples
@@ -715,9 +726,11 @@ pub fn burn_rate(samples: &[TurnSample], policy: &Policy, now: Ms) -> PerWindow<
                     last_window.resets_at.as_deref(),
                 )
         })?;
-        let hours = (last.at? - first.at?) as f64 / HOUR as f64;
+        let (from, to) = (first.at?, last.at?);
+        let hours = (to - from) as f64 / HOUR as f64;
+        let theirs = others.between(last.account.as_deref(), w, from, to);
         (hours > 0.0).then(|| {
-            ((last_window.used - first.windows[w].as_ref().map_or(0.0, |x| x.used)) / hours).max(0.0)
+            ((last_window.used - first.windows[w].as_ref().map_or(0.0, |x| x.used) - theirs) / hours).max(0.0)
         })
     })
 }
@@ -986,13 +999,32 @@ pub fn decide_turn_end(input: &TurnEnd<'_>) -> Decision {
     let Some(cur) = cur.filter(|_| event == "stop") else {
         return Decision::stay("not-a-turn-end");
     };
+    let vetoed = session.veto_until.is_some_and(|until| until > now);
+    let busy = !busy_tasks(&session.background_tasks).is_empty();
+    // An account that is over its threshold already is left now, while another one is open: the
+    // threshold is where its use ends, and waiting for the turn Claude Code refuses helps nobody.
+    // This is a fact and no forecast, so it holds in either mode, inside the minimum stay and with
+    // no cost known yet. What the operator chose (to stay) and work in the background still hold.
+    let over: Vec<Window> = WINDOWS.into_iter().filter(|w| cur.windows[*w].blocked).collect();
+    let stayed = session.stay_until.is_some_and(|until| until > now);
+    if !over.is_empty()
+        && !(vetoed || busy || stayed)
+        && let Some(to) = elsewhere().account
+    {
+        return Decision::Hop {
+            to,
+            reason: "threshold",
+            countdown: true,
+            windows: over,
+        };
+    }
     if policy.mode != Mode::Smart {
         return Decision::stay("order-mode");
     }
-    if session.veto_until.is_some_and(|until| until > now) {
+    if vetoed {
         return Decision::stay("vetoed");
     }
-    if !busy_tasks(&session.background_tasks).is_empty() {
+    if busy {
         return Decision::stay("busy");
     }
     if session

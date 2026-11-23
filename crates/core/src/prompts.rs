@@ -80,6 +80,12 @@ pub fn hop_reason(reason: &str, from: &str, window: Option<Limit>, until: Option
                 limit_name(window)
             )
         }
+        "threshold" => {
+            format!(
+                "{from} passed the share of its {} that is set for it (move between turns)",
+                limit_name(window)
+            )
+        }
         "compaction" => {
             format!("the conversation was just compacted and {from} is close to its limits (rebalance)")
         }
@@ -235,6 +241,10 @@ mod tests {
         assert_eq!(
             first("planned", Some(Limit::SevenDay), None),
             "[Baton] This conversation was moved to another account because the account it ran on was about to reach its weekly limit (planned move between turns)"
+        );
+        assert_eq!(
+            first("threshold", Some(Limit::FiveHour), None),
+            "[Baton] This conversation was moved to another account because the account it ran on passed the share of its 5-hour limit that is set for it (move between turns)"
         );
         assert_eq!(
             first("compaction", None, None),

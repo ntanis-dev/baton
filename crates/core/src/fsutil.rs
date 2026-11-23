@@ -119,6 +119,23 @@ pub fn write_file_atomic(file: &Path, text: &str, modes: Modes) -> io::Result<()
 
 /// Replaces `file` with `bytes` atomically, creating its folder.
 pub fn write_bytes_atomic(file: &Path, bytes: &[u8], modes: Modes) -> io::Result<()> {
+    write_bytes(file, bytes, modes, false)
+}
+
+/// [`write_file_atomic`] for the few files that must survive a power cut whole (the config, the record
+/// of what was installed, the operator's `settings.json`): the new content is on the disk before it
+/// takes the old file's place. Everything else Baton writes is made again when it is lost.
+pub fn write_file_durable(file: &Path, text: &str, modes: Modes) -> io::Result<()> {
+    write_bytes(file, text.as_bytes(), modes, true)
+}
+
+/// [`write_json_atomic`], written as [`write_file_durable`] writes.
+pub fn write_json_durable<T: Serialize + ?Sized>(file: &Path, value: &T) -> io::Result<()> {
+    write_file_durable(file, &(json::pretty(value) + "\n"), Modes::default())
+}
+
+/// Replaces `file` with `bytes` atomically, creating its folder; `durable` waits for the disk first.
+fn write_bytes(file: &Path, bytes: &[u8], modes: Modes, durable: bool) -> io::Result<()> {
     let dir = match file.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
         _ => PathBuf::from("."),
@@ -136,7 +153,10 @@ pub fn write_bytes_atomic(file: &Path, bytes: &[u8], modes: Modes) -> io::Result
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(modes.file.unwrap_or(PRIVATE_FILE));
     }
-    let written = options.open(&tmp).and_then(|mut out| out.write_all(bytes));
+    let written = options.open(&tmp).and_then(|mut out| {
+        out.write_all(bytes)?;
+        if durable { out.sync_all() } else { Ok(()) }
+    });
     if let Err(error) = written {
         let _ = fs::remove_file(&tmp);
         return Err(error);
@@ -153,7 +173,14 @@ pub fn write_bytes_atomic(file: &Path, bytes: &[u8], modes: Modes) -> io::Result
     let mut attempt = 0u64;
     loop {
         match fs::rename(&tmp, file) {
-            Ok(()) => return Ok(()),
+            Ok(()) => {
+                // The rename itself is in the folder (unix: a folder can be opened and synced).
+                #[cfg(unix)]
+                if durable && let Ok(folder) = fs::File::open(&dir) {
+                    let _ = folder.sync_all();
+                }
+                return Ok(());
+            }
             Err(error) => {
                 if attempt >= 6 || !is_busy(&error) {
                     let _ = fs::remove_file(&tmp);

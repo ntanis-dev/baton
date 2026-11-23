@@ -258,6 +258,52 @@ pub fn remove_wrapper(paths: &Paths, wrapper: &str) {
     let _ = remove_file(&wrapper_lock_file(paths, wrapper));
 }
 
+/// How long a wrapper's record is left alone after it was written, whatever it says: a wrapper that
+/// is starting has written it before anyone can tell that it runs.
+const WRAPPER_GRACE: Ms = 60_000;
+
+/// Removes the records of wrappers that no longer run (one that was killed never removed its own).
+/// Returns how many wrappers were forgotten.
+pub fn prune_wrappers(paths: &Paths, now: Ms) -> usize {
+    let Ok(entries) = fs::read_dir(&paths.wrappers) else {
+        return 0;
+    };
+    let mut ids: Vec<String> = entries
+        .flatten()
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter_map(|name| {
+            [".session.json", ".json", ".lock"]
+                .iter()
+                .find_map(|end| name.strip_suffix(end))
+                .map(str::to_owned)
+        })
+        .filter(|id| valid_id(id))
+        .collect();
+    ids.sort();
+    ids.dedup();
+    let mut removed = 0;
+    for id in ids {
+        let files = [
+            wrapper_file(paths, &id),
+            wrapper_session_file(paths, &id),
+            wrapper_lock_file(paths, &id),
+        ];
+        let fresh = files
+            .iter()
+            .filter_map(|file| mtime_ms(file))
+            .any(|at| now - at < WRAPPER_GRACE);
+        let runs = match read_json(&files[0]) {
+            Some(record) => wrapper_runs(paths, &record),
+            None => is_held(&files[2]),
+        };
+        if !fresh && !runs {
+            remove_wrapper(paths, &id);
+            removed += 1;
+        }
+    }
+    removed
+}
+
 /// A session seen recently that has not ended.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RecentSession {

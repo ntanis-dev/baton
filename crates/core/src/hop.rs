@@ -331,15 +331,16 @@ mod tests {
         let nobody = hop(&paths, &request(&env, Some(ID), Some("nobody"))).unwrap_err();
         assert_eq!(nobody.message, "No account named nobody.");
         assert_eq!(nobody.unnamed(), "No account named nobody.");
-        // By id only (the menu): a name does not find it.
-        let by_id = HopRequest {
-            to_by: By::Id,
-            ..request(&env, Some(ID), Some("Spare"))
+        // By id (the menu): an id in any case, since it names a folder; never a name.
+        let by_id = |to: &'static str| {
+            let asked = HopRequest {
+                to_by: By::Id,
+                ..request(&env, Some(ID), Some(to))
+            };
+            hop(&paths, &asked).unwrap_err().message
         };
-        assert_eq!(
-            hop(&paths, &by_id).unwrap_err().message,
-            "No account named Spare."
-        );
+        assert_eq!(by_id("WORK"), "The conversation already runs on Work.");
+        assert_eq!(by_id("The spare"), "No account named The spare.");
         // The wrapper's record names the account the conversation is on now.
         write_json_atomic(
             &wrapper_file(&paths, "w1"),

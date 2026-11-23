@@ -15,7 +15,9 @@ use std::time::Duration;
 
 use baton_core::charts::usage_tone;
 use baton_core::clock::{Ms, iso, ms_of, parse_ms};
-use baton_core::config::{Config, effective_policy, load_config, name_of, thresholds};
+use baton_core::config::{
+    Config, config_problem, effective_policy, load_config, name_of, same_id, thresholds,
+};
 use baton_core::env::Env;
 use baton_core::fsutil::{read_json, write_json_atomic};
 use baton_core::json::{Get, compact, is_truthy, num};
@@ -37,14 +39,24 @@ use serde_json::{Value, json};
 
 use crate::proc;
 
-/// The account of this process, or None when it is not one of Baton's.
+/// The account of this process, or None when it is not one of Baton's. The id is the config's own
+/// spelling: the profile folder may be given in another case, and it is the same folder.
 pub fn baton_account(env: &Env, paths: &Paths) -> Option<String> {
     let id = account_from_env(env, paths)?;
     load_config(paths)
         .accounts
-        .iter()
-        .any(|a| a.id == id)
-        .then_some(id)
+        .into_iter()
+        .find(|a| same_id(&a.id, &id))
+        .map(|a| a.id)
+}
+
+/// What to tell the operator when this process runs in one of Baton's profiles and config.json cannot
+/// be used: without the config the profile is nobody's account, and nothing would be recorded or shown
+/// with no word of why.
+pub fn config_notice(env: &Env, paths: &Paths) -> Option<String> {
+    account_from_env(env, paths)?;
+    let problem = config_problem(paths)?;
+    Some(format!("baton: {problem} (baton doctor says more)"))
 }
 
 /// The pid of the Claude Code process running this hook or status line (Claude Code sets

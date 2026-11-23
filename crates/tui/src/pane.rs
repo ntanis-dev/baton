@@ -3,7 +3,7 @@
 use baton_core::lines::{Line, line_width, s, wrap_line};
 
 use crate::keys::Key;
-use crate::layout::{Size, body_height, frame_cols, inner, is_narrow};
+use crate::layout::{Size, body_height, frame_cols, inner};
 use crate::state::State;
 use crate::tree::{selected_row, side_width, tree_rows};
 use crate::views;
@@ -90,11 +90,7 @@ pub struct PaneBox {
 pub fn pane_box(state: &State) -> PaneBox {
     let cols = frame_cols(state);
     let height = body_height(state);
-    let width = if is_narrow(state) {
-        cols
-    } else {
-        cols.saturating_sub(side_width(state)).max(10)
-    };
+    let width = cols.saturating_sub(side_width(state)).max(10);
     PaneBox {
         width,
         height,
@@ -249,7 +245,7 @@ pub fn pane_window(state: &State, model: &PaneModel, pane: &PaneBox) -> Window {
 
 /// Whether the right pane is taller than its room (PgUp/PgDn scroll it).
 pub fn pane_overflows(state: &State) -> bool {
-    if state.data.is_none() || is_narrow(state) {
+    if state.data.is_none() {
         return false;
     }
     let pane = pane_box(state);

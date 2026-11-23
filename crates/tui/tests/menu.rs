@@ -14,7 +14,7 @@ use baton_core::theme::{GlyphSet, RICH, make_theme, pick_glyphs_on};
 use baton_testkit::{TestHome, temp_home};
 use baton_tui::data::load_menu_data;
 use baton_tui::keys::Key;
-use baton_tui::layout::{Size, is_narrow};
+use baton_tui::layout::Size;
 use baton_tui::legend::legend_line;
 use baton_tui::reducer::reduce;
 use baton_tui::state::{Action, Effect, Focus, ModalKind, State, Submit, last_toast};
@@ -95,7 +95,9 @@ fn every_screen_fills_its_supported_terminal_and_smaller_terminals_show_the_bran
             assert!(lines.iter().all(|line| width(line) <= size.cols), "{name}");
             let text = lines.join("\n");
             if size.cols < 100 || size.rows < 28 {
-                assert!(text.contains("Baton needs 100 x 28"), "{name}");
+                // Less room: the name in place of the wordmark, and the same screen.
+                assert!(!text.contains("Baton needs"), "{name}");
+                assert!(text.contains("BATON") || state.modal.is_some(), "{name}");
             } else {
                 assert!(
                     text.contains(LOGO[1].trim()) || state.modal.is_some(),
@@ -223,17 +225,29 @@ fn an_accounts_tail_shows_both_windows_when_they_fit_else_the_higher_one_with_it
 }
 
 #[test]
-fn the_workspace_has_a_fixed_rail_and_a_branded_minimum_size_error() {
+fn the_workspace_has_a_rail_beside_the_pane_from_80_by_24_up_and_a_branded_minimum_size_error() {
     let home = home(false);
     let state = menu_state(&home.paths, &[]);
-    assert!(!is_narrow(&state));
     let text = frame(&state).join("\n");
     assert!(matches(
         &text,
         r"(?s)Accounts.*NEXT ACCOUNT|NEXT ACCOUNT.*Accounts"
     ));
-    let small = menu_state_with(&home.paths, Size { cols: 80, rows: 24 }, &[], GlyphSet::Rich);
-    assert!(frame(&small).join("\n").contains("Current size: 80 x 24"));
+    // The window a terminal opens with on macOS and Linux: a narrower rail, the pane whole.
+    let default = menu_state_with(&home.paths, Size { cols: 80, rows: 24 }, &[], GlyphSet::Rich);
+    let drawn = frame(&default).join("\n");
+    assert!(matches(
+        &drawn,
+        r"(?s)Accounts.*NEXT ACCOUNT|NEXT ACCOUNT.*Accounts"
+    ));
+    assert!(
+        drawn.contains("Account         5-hour    Weekly    Status"),
+        "{drawn}"
+    );
+    let small = menu_state_with(&home.paths, Size { cols: 79, rows: 24 }, &[], GlyphSet::Rich);
+    let drawn = frame(&small).join("\n");
+    assert!(drawn.contains("Baton needs 80 x 24 terminal cells."), "{drawn}");
+    assert!(drawn.contains("Current size: 79 x 24"));
     assert_eq!(go!(&home.paths, small, "q").effects, vec![Effect::Quit]);
 }
 
@@ -559,9 +573,9 @@ fn account_actions_open_contextually_and_mode_changes_use_the_same_account_id() 
     let menu = go!(paths, account, "enter").state;
     assert_eq!(modal_kind(&menu), Some("actions"));
     let drawn = frame(&menu).join("\n");
-    assert!(matches(&drawn, r"Change mode\s+m"));
-    assert_eq!(go!(paths, menu, "m").state.modal.unwrap().title, "Account mode");
-    for label in ["Rename", "Change mode", "Delete account", "Sign in again"] {
+    assert!(matches(&drawn, r"Change mark\s+m"));
+    assert_eq!(go!(paths, menu, "m").state.modal.unwrap().title, "Account mark");
+    for label in ["Rename", "Change mark", "Delete account", "Sign in again"] {
         assert!(drawn.contains(label), "{label}");
     }
     assert!(matches!(
@@ -572,7 +586,7 @@ fn account_actions_open_contextually_and_mode_changes_use_the_same_account_id() 
         })
     ));
     let mode = go!(paths, menu, "down", "enter").state;
-    assert_eq!(mode.modal.as_ref().unwrap().title, "Account mode");
+    assert_eq!(mode.modal.as_ref().unwrap().title, "Account mark");
     assert_eq!(
         go!(paths, mode, "down", "enter").applied()[0]["args"],
         json!({ "id": "acct2", "mark": "normal" })
@@ -1012,7 +1026,9 @@ fn a_long_name_such_as_an_email_wraps_in_the_sidebar_instead_of_being_cut_and_ev
         }
         let text = lines.join("\n");
         if state.size.cols < 100 {
-            assert!(text.contains("Baton needs 100 x 28"));
+            // A narrower rail: nothing is wider than the terminal, and the name is cut, not wrapped
+            // into the pane.
+            assert!(!text.contains("Baton needs"));
             continue;
         }
         // Every part of the name is there, in order, across the wrapped lines.

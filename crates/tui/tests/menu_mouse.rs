@@ -170,7 +170,7 @@ fn the_footer_actions_menu_contains_refresh_and_the_header_stays_clear() {
             ..
         })
     ));
-    let mode = click(&actions, "Change mode", Where::Anywhere).state;
+    let mode = click(&actions, "Change mark", Where::Anywhere).state;
     assert_eq!(args(&click(&mode, "2 Normal", Where::Anywhere))["mark"], "normal");
     assert_eq!(
         modal_kind(&click(&actions, "Delete account", Where::Anywhere).state),
@@ -324,7 +324,7 @@ fn a_click_beside_a_menu_or_a_pick_list_closes_it_and_what_is_typed_stays() {
     // In the dialog, on nothing: it stays.
     let (x, y) = locate(&actions, "Account actions", Where::Anywhere);
     assert_eq!(mouse(&actions, x, y).state, actions);
-    let mode = click(&actions, "Change mode", Where::Anywhere).state;
+    let mode = click(&actions, "Change mark", Where::Anywhere).state;
     assert_eq!(modal_kind(&mode), Some("choice"));
     assert_eq!(mouse(&mode, 2, 2).state, account);
     // A line of text and the thresholds stay: what was typed or set would be lost.
@@ -429,8 +429,8 @@ fn the_splash_and_minimum_size_error_use_the_same_ascii_identity() {
     assert!(!dismissed.state.splash);
     assert!(dismissed.state.modal.is_none());
     let mut error = splash.clone();
-    error.size = Size { cols: 80, rows: 24 };
-    assert!(frame(&error).join("\n").contains("Baton needs 100 x 28"));
+    error.size = Size { cols: 70, rows: 20 };
+    assert!(frame(&error).join("\n").contains("Baton needs 80 x 24"));
     assert!(press(&error, paths, "enter").state.splash);
     assert_eq!(press(&error, paths, "q").effects, vec![Effect::Quit]);
     // A click leaves the splash screen too.

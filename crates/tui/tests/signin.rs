@@ -68,7 +68,8 @@ fn the_sign_in_runs_under_the_accounts_profile_with_batons_screen_around_it() {
     );
     assert!(profile_dir(&home.paths, "work").join("fake-signed-in").exists());
     let written = screen.written();
-    // The screen: on the alternate screen, with the link as a hyperlink and never as text.
+    // The screen: on the alternate screen, with the link as a hyperlink, and its address written out
+    // too for a terminal that makes no hyperlinks.
     assert!(written.starts_with("\x1b[?1049h\x1b[?7l\x1b[2J\x1b[H"));
     for shown in [
         "CONNECT ACCOUNT",
@@ -81,7 +82,7 @@ fn the_sign_in_runs_under_the_accounts_profile_with_batons_screen_around_it() {
     }
     assert!(written.contains(&format!("\x1b]8;;{LINK}\x1b\\")));
     assert!(
-        !written
+        written
             .replace(&format!("\x1b]8;;{LINK}\x1b\\"), "")
             .contains("baton-fixture")
     );

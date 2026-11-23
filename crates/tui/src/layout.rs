@@ -1,5 +1,10 @@
-//! One fixed rail, one workspace and a quiet footer. A reserved last row avoids Windows console
-//! scrolling when the bottom-right cell is written.
+//! One rail, one workspace and a quiet footer. A reserved last row avoids Windows console scrolling
+//! when the bottom-right cell is written.
+//!
+//! The menu draws from 80 x 24 cells up, the window a terminal opens with on macOS and Linux. The
+//! pane is as wide at 80 columns as it is at 100: what is missing below 100 comes off the rail, which
+//! then shows its name in place of the wordmark. Every size here is worked out from the terminal's, in
+//! one place, for what is drawn and for where a click lands.
 
 use crate::state::State;
 
@@ -13,15 +18,19 @@ pub struct Size {
 }
 
 /// The smallest terminal the menu draws in.
-pub const MIN_SIZE: Size = Size { cols: 100, rows: 28 };
+pub const MIN_SIZE: Size = Size { cols: 80, rows: 24 };
+/// From this many columns and rows on the sidebar has its full width and its wordmark.
+pub const ROOMY: Size = Size { cols: 100, rows: 28 };
 /// Rows above the body.
 pub const HEADER_ROWS: usize = 0;
 /// Rows below the body.
 pub const FOOTER_ROWS: usize = 1;
-/// The width of the sidebar.
+/// The width of the sidebar where there is room for all of it.
 pub const SIDEBAR_COLS: usize = 46;
-/// The rows of the sidebar's brand and search control.
-pub const SIDE_BRAND_ROWS: usize = 13;
+/// The rows of the sidebar's wordmark, caption and search control.
+const SIDE_BRAND_ROWS: usize = 13;
+/// The rows of the sidebar's name and search control, where there is no room for the wordmark.
+const SIDE_NAME_ROWS: usize = 4;
 /// The rows of the sidebar's Add account control and scroll hint.
 pub const SIDE_FOOTER_ROWS: usize = 3;
 /// The rows of a pane's title and note.
@@ -42,9 +51,29 @@ pub fn body_height(state: &State) -> usize {
     frame_rows(state).saturating_sub(HEADER_ROWS + FOOTER_ROWS).max(1)
 }
 
-/// Whether one pane shows at a time. Never: the menu asks for its minimum size instead.
-pub fn is_narrow(_state: &State) -> bool {
-    false
+/// The width of the sidebar: all of it from 100 columns on, and below that less by every column the
+/// terminal is short of 100, so that the pane keeps its width.
+pub fn side_cols(state: &State) -> usize {
+    let short = ROOMY.cols.saturating_sub(state.size.cols);
+    SIDEBAR_COLS
+        .saturating_sub(short)
+        .max(SIDEBAR_COLS - (ROOMY.cols - MIN_SIZE.cols))
+}
+
+/// Whether the sidebar shows its name in place of the wordmark: the wordmark needs the full width,
+/// and its rows are the list's where rows are few.
+pub fn compact(state: &State) -> bool {
+    state.size.cols < ROOMY.cols || state.size.rows < ROOMY.rows
+}
+
+/// The rows of the sidebar above its list: the brand and the search control, which is the row before
+/// the last of them.
+pub fn brand_rows(state: &State) -> usize {
+    if compact(state) {
+        SIDE_NAME_ROWS
+    } else {
+        SIDE_BRAND_ROWS
+    }
 }
 
 /// Whether the terminal is smaller than the menu needs.
@@ -76,12 +105,31 @@ mod tests {
             (120, 29, 28)
         );
         assert!(!too_small(&state));
-        assert!(!is_narrow(&state));
+        assert_eq!(
+            (side_cols(&state), compact(&state), brand_rows(&state)),
+            (46, false, 13)
+        );
+        // The window a terminal opens with elsewhere: the pane keeps its 54 columns.
         let small = initial_state(Init {
             size: Size { cols: 80, rows: 24 },
             ..Init::default()
         });
-        assert!(too_small(&small));
+        assert!(!too_small(&small));
+        assert_eq!(
+            (side_cols(&small), compact(&small), brand_rows(&small)),
+            (26, true, 4)
+        );
+        let between = |cols: usize, rows: usize| {
+            let state = initial_state(Init {
+                size: Size { cols, rows },
+                ..Init::default()
+            });
+            (side_cols(&state), compact(&state), too_small(&state))
+        };
+        assert_eq!(between(90, 30), (36, true, false));
+        assert_eq!(between(100, 27), (46, true, false));
+        assert_eq!(between(79, 24), (26, true, true));
+        assert_eq!(between(80, 23), (26, true, true));
         let none = initial_state(Init {
             size: Size { cols: 0, rows: 0 },
             ..Init::default()

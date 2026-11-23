@@ -143,7 +143,8 @@ To keep one more key of `.claude.json` in step, name it in `~/.baton/config.json
 
 ## The menu
 
-`baton view` opens a full-screen app (at least 100 × 28 characters): accounts on the left, details on the right.
+`baton view` opens a full-screen app (from 80 × 24 characters up, the window most terminals open with): accounts on
+the left, details on the right. Below 100 columns the list is narrower and the details keep their width.
 
 - The **overview** shows the next account, usage meters, live sessions and today's moves.
 - Each **account** has an Actions menu: rename, mode, thresholds, refresh, sign-in, order and delete. Each action's
@@ -159,7 +160,8 @@ To keep one more key of `.claude.json` in step, name it in `~/.baton/config.json
 | `q` or `Ctrl+C`              | Quit                                                     |
 
 Set `NO_COLOR` to drop the colors, `BATON_GLYPHS=plain` for the classic Windows console's glyphs, and
-`BATON_MOUSE=off` to leave the mouse alone. The other commands print in the same look, and as plain text when piped.
+`BATON_MOUSE=off` to leave the mouse alone. The splash screen greets a first start, before there is an account;
+`BATON_SPLASH=on` shows it at every start and `off` never. The other commands print in the same look, and as plain text when piped.
 
 ## Safe by design
 

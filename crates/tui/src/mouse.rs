@@ -3,9 +3,7 @@
 use baton_core::text::width;
 
 use crate::keys::Key;
-use crate::layout::{
-    PANE_HEADER_ROWS, SIDE_BRAND_ROWS, SIDE_FOOTER_ROWS, body_height, frame_cols, too_small,
-};
+use crate::layout::{PANE_HEADER_ROWS, SIDE_FOOTER_ROWS, body_height, brand_rows, frame_cols, too_small};
 use crate::pane::{Item, current_item, pane_box, pane_model, pane_window};
 use crate::state::{ModalKind, MouseEvent, MouseKind, State};
 use crate::tree::{side_focused, side_lines, side_span, side_top, side_width, tree_rows};
@@ -167,7 +165,8 @@ pub fn hit_test(state: &State, event: &MouseEvent) -> Option<Hit> {
         });
     }
     if in_side {
-        if y == SIDE_BRAND_ROWS - 2 {
+        let above = brand_rows(state);
+        if y == above - 2 {
             return Some(Hit::Command(Key::Char('/')));
         }
         if y + 2 == body_height(state) {
@@ -183,14 +182,12 @@ pub fn hit_test(state: &State, event: &MouseEvent) -> Option<Hit> {
             &rows,
             side_span(state, cells, &rows),
         );
-        let room = body_height(state)
-            .saturating_sub(SIDE_BRAND_ROWS + SIDE_FOOTER_ROWS)
-            .max(1);
+        let room = body_height(state).saturating_sub(above + SIDE_FOOTER_ROWS).max(1);
         let top = side_top(view.lines.len(), view.from, view.to, room);
-        if y < SIDE_BRAND_ROWS || y - SIDE_BRAND_ROWS >= room || x < 1 || x >= side - 1 {
+        if y < above || y - above >= room || x < 1 || x >= side - 1 {
             return None;
         }
-        let id = view.owners.get(top + y - SIDE_BRAND_ROWS)?.clone()?;
+        let id = view.owners.get(top + y - above)?.clone()?;
         return Some(Hit::Select(id));
     }
     let pane = pane_box(state);

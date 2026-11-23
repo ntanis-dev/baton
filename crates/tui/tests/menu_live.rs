@@ -236,9 +236,9 @@ fn a_right_click_or_a_second_click_opens_the_actions_and_a_click_beside_closes_t
     menu.type_keys(&[&format!("\x1b[<0;8;{}M", y + 1)]);
     menu.shows("Account actions");
     menu.type_keys(&["\x1b[<65;60;12M", ENTER]);
-    menu.shows("Account mode");
+    menu.shows("Account mark");
     menu.type_keys(&["\x1b[<0;3;3M"]);
-    menu.shows_where(|screen| !screen.contains("Account mode"), "the pick list closed");
+    menu.shows_where(|screen| !screen.contains("Account mark"), "the pick list closed");
     menu.type_keys(&["q"]);
     assert_eq!(menu.finish(), 0);
 }
@@ -292,7 +292,7 @@ fn claude_sign_in_gets_a_branded_screen_and_returns_to_the_same_account() {
     let mut menu = start(Start::default());
     menu.matches("acct4 +sign in");
     menu.type_keys(&[DOWN, DOWN, DOWN, DOWN]);
-    menu.matches("#4 of 4 · last-resort");
+    menu.matches("#4 of 4 · last resort");
     menu.type_keys(&[ENTER, "s"]);
     menu.shows("CONNECT ACCOUNT");
     menu.shows("YOUR SIGN-IN LINK");
@@ -337,10 +337,10 @@ fn a_small_terminal_shows_the_branded_error_and_resumes_when_resized() {
         ..Start::default()
     });
     menu.shows("NEXT ACCOUNT");
-    menu.output.resize(80, 24);
-    menu.shows("Baton needs 100 x 28");
+    menu.output.resize(70, 20);
+    menu.shows("Baton needs 80 x 24");
     menu.type_keys(&[DOWN, ENTER]);
-    assert!(menu.output.text().contains("Baton needs 100 x 28"));
+    assert!(menu.output.text().contains("Baton needs 80 x 24"));
     menu.output.resize(120, 30);
     menu.shows("NEXT ACCOUNT");
     menu.type_keys(&["q"]);

@@ -244,10 +244,7 @@ pub fn overview_rows(state: &State, width: usize) -> Vec<BodyLine> {
     body.push(section_rule("TODAY", width, g).into());
     body.push(
         vec![s(
-            format!(
-                "{hops}{}  ·  {refusals} refusals",
-                if hops == 1 { " handoff" } else { " handoffs" }
-            ),
+            format!("{}  ·  {}", plural(hops, "handoff"), plural(refusals, "refusal")),
             "muted",
         )]
         .into(),

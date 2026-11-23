@@ -106,7 +106,7 @@ pub fn open_actions(state: &State, item: &Item) -> Outcome {
     let offers = |key: &str| offered.iter().any(|(k, _)| *k == key);
     let mut options = vec![
         option("Rename", "e", "e"),
-        option("Change mode", "mode", "m"),
+        option("Change mark", "mode", "m"),
         option("Usage thresholds", "t", "t"),
         option("Refresh usage", "r", "r"),
         option(
@@ -176,7 +176,7 @@ pub fn run_action(state: &State, command: &str) -> Outcome {
     open(
         &next,
         Modal {
-            title: "Account mode".to_owned(),
+            title: "Account mark".to_owned(),
             lines: vec![account.name.clone()],
             scroll: None,
             kind: ModalKind::Choice {
@@ -184,9 +184,9 @@ pub fn run_action(state: &State, command: &str) -> Outcome {
                 index,
                 choose: Choose::Mark {
                     id: account.id.clone(),
-                    done: format!("Updated the mode of {}.", account.name),
+                    done: format!("Updated the mark of {}.", account.name),
                 },
-                submit_label: Some("Set mode".to_owned()),
+                submit_label: Some("Set mark".to_owned()),
             },
         },
     )

@@ -55,6 +55,15 @@ impl Mark {
     pub fn parse(word: &str) -> Option<Mark> {
         MARKS.into_iter().find(|m| m.as_str() == word)
     }
+
+    /// The mark as people read it, wherever it is shown: `preferred`, `normal`, `last resort`.
+    pub fn words(self) -> &'static str {
+        match self {
+            Mark::Preferred => "preferred",
+            Mark::Normal => "normal",
+            Mark::LastResort => "last resort",
+        }
+    }
 }
 
 /// How new work is placed.

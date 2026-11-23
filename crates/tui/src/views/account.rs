@@ -194,7 +194,7 @@ pub fn account_body(state: &State, id: &str, width: usize) -> Vec<Line> {
     let mut facts: Vec<Line> = vec![
         vec![s(format!("#{} of {}", a.index + 1, all.len()), "muted")],
         vec![s(
-            a.mark.as_str(),
+            a.mark.words(),
             match a.mark {
                 Mark::Preferred => "baton bold",
                 Mark::LastResort => "muted",

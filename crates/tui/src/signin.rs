@@ -19,7 +19,7 @@ use baton_core::theme::{GlyphSet, pick_glyphs};
 use regex::Regex;
 
 use crate::console::{Console, StdConsole};
-use crate::layout::{SIDEBAR_COLS, Size, too_small};
+use crate::layout::{Size, side_cols, too_small};
 use crate::paint::{Painter, WRAP_OFF, WRAP_ON, row_text};
 use crate::state::{Init, initial_state};
 use crate::ui::kit::theme_of;
@@ -402,7 +402,7 @@ impl Screen<'_> {
             out.push_str(&format!(
                 "\x1b[{};{}H\x1b[?25h",
                 size.rows.saturating_sub(3),
-                SIDEBAR_COLS + 6
+                side_cols(&state) + 6
             ));
         }
         console.write(&out)

@@ -181,13 +181,9 @@ pub fn help_screen(term: &Terminal, commands: &[Command], name: Option<&str>) ->
 
 // ---- accounts ----------------------------------------------------------------------------------
 
-/// A mark in words: `last resort` for last-resort.
+/// A mark in words, as [`Mark::words`] says it: `last resort` for last-resort.
 pub fn mark_word(mark: &str) -> &str {
-    if mark == "last-resort" {
-        "last resort"
-    } else {
-        mark
-    }
+    Mark::parse(mark).map_or(mark, |known| known.words())
 }
 
 /// The answer to an account command: a headline, facts, notes, an optional next step.

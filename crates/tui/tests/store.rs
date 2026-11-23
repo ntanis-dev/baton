@@ -98,7 +98,7 @@ fn actions_run_through_the_core_functions_and_the_menu_reads_the_result_back() {
     assert!(
         last_toast(store.state())
             .unwrap()
-            .contains("Updated the mode of acct2")
+            .contains("Updated the mark of acct2")
     );
     let shown = store
         .state()

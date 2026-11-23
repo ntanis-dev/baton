@@ -30,7 +30,7 @@ use baton_core::theme::{GlyphSet, pick_glyphs};
 use baton_profile::profile::{LinkOptions, link_profile};
 
 use crate::console::{Console, StdConsole, restore_terminal};
-use crate::layout::{Size, too_small};
+use crate::layout::Size;
 use crate::paint::{Painter, SCREEN_OFF, SCREEN_ON, WRAP_OFF, WRAP_ON};
 use crate::signin::{LoginStdio, SignIn, interrupts, sign_in_on};
 use crate::state::{Action, Auth, Effect};
@@ -80,7 +80,8 @@ pub struct MenuOptions {
     /// Code's to take); None for the process's own on its own terminal, and for nothing on a
     /// `console` that was handed in.
     pub signals: Option<Box<dyn Signals>>,
-    /// Whether the splash screen shows first; None for yes unless `BATON_SPLASH` is `off`.
+    /// Whether the splash screen shows first; None for a first start (no account yet), or what
+    /// `BATON_SPLASH` says (`on`, `off`).
     pub splash: Option<bool>,
     /// Whether the mouse is used; None for yes unless `BATON_MOUSE` is `off`.
     pub mouse: Option<bool>,
@@ -294,6 +295,16 @@ struct Usage {
     own: Option<Arc<Poller>>,
 }
 
+/// Whether the splash screen shows first when the caller did not say: on a first start (`first`: no
+/// account yet), unless `BATON_SPLASH` says `on` (every start) or `off` (none).
+pub fn splash_first(env: &Env, first: bool) -> bool {
+    match env.get("BATON_SPLASH") {
+        Some("off") => false,
+        Some("on") => true,
+        _ => first,
+    }
+}
+
 /// Runs the menu until the operator leaves it. Returns its exit code, 0; an error when the terminal
 /// could not be written to (it is given back as it was either way).
 pub fn run_menu(options: MenuOptions) -> io::Result<i32> {
@@ -322,7 +333,9 @@ pub fn run_menu(options: MenuOptions) -> io::Result<i32> {
     let tty = console.is_tty();
     let color = color.unwrap_or(!env.has("NO_COLOR"));
     let glyphs = glyphs.unwrap_or_else(|| pick_glyphs(&env));
-    let splash = splash.unwrap_or(env.get("BATON_SPLASH") != Some("off"));
+    // The splash screen greets a first start, before there is an account; after that the menu opens
+    // on its accounts at once. `BATON_SPLASH` says otherwise: `on` for every start, `off` for none.
+    let splash = splash.unwrap_or_else(|| splash_first(&env, load_config(&paths).accounts.is_empty()));
     let mouse = mouse.unwrap_or(env.get("BATON_MOUSE") != Some("off")) && tty;
     let now: Clock = now.unwrap_or_else(|| Arc::new(now_ms));
     // Housekeeping: what the policy says is old goes when the menu starts, as when a wrapper does.
@@ -439,8 +452,9 @@ pub fn run_menu(options: MenuOptions) -> io::Result<i32> {
                 ended = Some(code);
                 break;
             }
-            // The usage poll starts once the menu itself shows.
-            if poll && host.is_none() && !store.state().splash && !too_small(store.state()) {
+            // The usage poll starts with the menu, whatever shows on it: the splash screen and a
+            // window too small to draw in are no reason to let the readings grow old.
+            if poll && host.is_none() {
                 // Without a claude of its own the poller finds one itself, or records why not.
                 let own = claude(&paths, &env, launcher.as_ref()).ok();
                 let polling = PollHost::new(PollHostOptions {
@@ -528,4 +542,19 @@ pub fn run_menu(options: MenuOptions) -> io::Result<i32> {
         own.stop();
     }
     done.map(|()| ended.unwrap_or(0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_splash_screen_greets_a_first_start_unless_told_otherwise() {
+        let said = |value: &str| Env::from_pairs([("BATON_SPLASH", value)]);
+        assert!(splash_first(&Env::new(), true));
+        assert!(!splash_first(&Env::new(), false));
+        assert!(splash_first(&said("on"), false));
+        assert!(!splash_first(&said("off"), true));
+        assert!(!splash_first(&said("anything else"), false));
+    }
 }

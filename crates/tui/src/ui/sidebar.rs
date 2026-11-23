@@ -5,7 +5,7 @@ use baton_core::lines::{Line, fit_line, p, restyle, s};
 use baton_core::theme::Theme;
 
 use super::kit::{ON_TERMINAL, block, on_surface};
-use crate::layout::{SIDE_BRAND_ROWS, SIDE_FOOTER_ROWS};
+use crate::layout::{SIDE_FOOTER_ROWS, brand_rows, compact};
 use crate::modal::field_window;
 use crate::state::{Focus, State};
 use crate::tree::{side_focused, side_lines, side_span, side_top, tree_rows};
@@ -18,7 +18,8 @@ const RULE: &str = "#2b3037";
 pub fn sidebar(state: &State, theme: &Theme, width: usize, height: usize) -> Vec<Line> {
     let cells = width.saturating_sub(3);
     let rows = tree_rows(state);
-    let room = height.saturating_sub(SIDE_BRAND_ROWS + SIDE_FOOTER_ROWS).max(1);
+    let above = brand_rows(state);
+    let room = height.saturating_sub(above + SIDE_FOOTER_ROWS).max(1);
     let view = side_lines(
         state,
         cells,
@@ -71,8 +72,15 @@ pub fn sidebar(state: &State, theme: &Theme, width: usize, height: usize) -> Vec
         s("+ ", "accent bold"),
         s("Add account", "accent"),
     ];
-    let mut brand: Vec<Line> = vec![Vec::new()];
-    brand.extend(branding("  "));
+    // The wordmark where there is room for it, the name alone where there is not; the search control
+    // is the row before the last either way.
+    let mut brand: Vec<Line> = if compact(state) {
+        vec![vec![s("  BATON", "brand bold")]]
+    } else {
+        let mut brand = vec![Vec::new()];
+        brand.extend(branding("  "));
+        brand
+    };
     brand.push(Vec::new());
     brand.push(control(search, state.focus == Focus::Search && !state.filtering));
     brand.push(Vec::new());
@@ -91,7 +99,7 @@ pub fn sidebar(state: &State, theme: &Theme, width: usize, height: usize) -> Vec
         ));
     }
     let shown: Vec<Line> = view.lines.iter().skip(top).take(room).cloned().collect();
-    let mut content = block(&brand, cells, Some(SIDE_BRAND_ROWS));
+    let mut content = block(&brand, cells, Some(above));
     content.extend(block(&shown, cells, Some(room)));
     content.extend(block(
         &[Vec::new(), control(add, state.focus == Focus::Add), more],

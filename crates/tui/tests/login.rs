@@ -78,15 +78,33 @@ fn the_sign_in_screen_waits_for_the_link_and_gives_way_to_the_size_error() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(text.contains("claude.ai"));
-    assert!(text.contains("Ctrl+click the link if your browser did not open."));
-    let small = initial_state(Init {
+    assert!(text.contains("If your browser did not open, Ctrl+click the link or copy it:"));
+    // The whole link is written out, for a terminal that shows none: across lines, to be copied.
+    let written = |rows: &[baton_core::lines::Line]| -> String {
+        rows.iter()
+            .map(|row| plain(row))
+            .filter_map(|row| row.split_once('\u{2502}').map(|(_, pane)| pane.trim().to_owned()))
+            .collect()
+    };
+    assert!(written(&linked.rows).contains(URL), "{text}");
+    // The same at 80 x 24, where the words around the link give way to it.
+    let default = initial_state(Init {
         size: Size { cols: 80, rows: 24 },
+        color: false,
+        ..Init::default()
+    });
+    let narrow = login_frame(&default, "work@example.com", Some(URL), false);
+    assert_eq!(narrow.rows.len(), 23);
+    assert!(narrow.link.is_some());
+    assert!(written(&narrow.rows).contains(URL));
+    let small = initial_state(Init {
+        size: Size { cols: 70, rows: 20 },
         color: false,
         ..Init::default()
     });
     let error = login_frame(&small, "work@example.com", Some(URL), true);
     assert!(error.link.is_none());
-    assert_eq!(error.rows.len(), 23);
+    assert_eq!(error.rows.len(), 19);
     assert!(
         error
             .rows
@@ -94,7 +112,7 @@ fn the_sign_in_screen_waits_for_the_link_and_gives_way_to_the_size_error() {
             .map(|row| plain(row))
             .collect::<Vec<_>>()
             .join("\n")
-            .contains("Baton needs 100 x 28")
+            .contains("Baton needs 80 x 24")
     );
 }
 

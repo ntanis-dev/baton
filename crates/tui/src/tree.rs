@@ -11,7 +11,7 @@ use baton_core::theme::Glyphs;
 
 use crate::data::SessionInfo;
 use crate::fuzzy::fuzzy_matches;
-use crate::layout::{SIDEBAR_COLS, body_height, is_narrow};
+use crate::layout::{body_height, side_cols};
 use crate::state::{Focus, State, accounts, live_sessions, recent_sessions, signed_out};
 
 /// What a sidebar row is.
@@ -336,8 +336,8 @@ pub fn row_width(row: &Row, tail: &[Span]) -> usize {
 }
 
 /// The width of the sidebar.
-pub fn side_width(_state: &State) -> usize {
-    SIDEBAR_COLS
+pub fn side_width(state: &State) -> usize {
+    side_cols(state)
 }
 
 /// How a row is drawn.
@@ -582,13 +582,9 @@ pub fn side_top(count: usize, from: usize, to: usize, height: usize) -> usize {
     from.saturating_sub(room / 2).min(count - height)
 }
 
-/// The room a row's name and tail are laid out in.
-pub fn side_span(state: &State, cells: usize, rows: &[Row]) -> usize {
-    if !is_narrow(state) {
-        return cells;
-    }
-    let widest = rows.iter().map(|r| row_width(r, &r.tail)).max().unwrap_or(0);
-    cells.min(widest.clamp(30, 48))
+/// The room a row's name and tail are laid out in: all of the sidebar's cells.
+pub fn side_span(_state: &State, cells: usize, _rows: &[Row]) -> usize {
+    cells
 }
 
 /// How far a page moves the selection.

@@ -220,11 +220,18 @@ pub fn show_value(field: &Field, value: &Value) -> String {
 
 /// The settings the form changed, by name, in the form's order.
 pub fn changes(form: &Form) -> Vec<(String, Value)> {
+    let defaults = Policy::default();
     FIELDS
         .iter()
         .enumerate()
         .filter(|(at, _)| form.values.get(*at) != form.original.get(*at))
-        .filter_map(|(at, f)| Some((f.key.to_owned(), form.values.get(at)?.clone())))
+        .filter_map(|(at, f)| {
+            let value = form.values.get(at)?.clone();
+            // A setting put back to its default is no longer set at all, as `default` on the command
+            // line leaves it: it follows the default from then on, also when that changes.
+            let unset = defaults.get(f.key).as_ref() == Some(&value);
+            Some((f.key.to_owned(), if unset { Value::Null } else { value }))
+        })
         .collect()
 }
 
@@ -556,6 +563,28 @@ mod tests {
         assert_eq!(step(&FIELDS[7], &json!(true), 1), json!(false));
         assert_eq!(step(&FIELDS[0], &json!("smart"), -1), json!("order"));
         assert_eq!(step(&FIELDS[0], &json!("order"), 1), json!("smart"));
+    }
+
+    #[test]
+    fn a_setting_put_back_to_its_default_is_no_longer_set() {
+        // The operator had the 5-hour limit at 80 and the mode on order.
+        let set = Policy {
+            five_hour: 80.0,
+            mode: baton_core::config::Mode::Order,
+            ..Policy::default()
+        };
+        let mut form = start_form(&set);
+        form.values[1] = json!(90);
+        form.values[0] = json!("smart");
+        form.values[2] = json!(96);
+        assert_eq!(
+            changes(&form),
+            [
+                ("mode".to_owned(), Value::Null),
+                ("fiveHour".to_owned(), Value::Null),
+                ("weekly".to_owned(), json!(96)),
+            ]
+        );
     }
 
     #[test]

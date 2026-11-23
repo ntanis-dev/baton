@@ -17,7 +17,6 @@ use baton_core::term::{Terminal, banner, entry, fact, heading, mark, outcome, pa
 use baton_core::text::{pct, span, when};
 use baton_install::install::{Applied, Item, Plan};
 use baton_profile::accounts::{Added, Removed};
-use baton_profile::copies::{BASE, Conflict};
 use baton_profile::profile::LinkEntry;
 use baton_profile::sync::SyncReport;
 use baton_tui::data::MenuData;
@@ -468,84 +467,6 @@ pub fn account_set(term: &Terminal, account: &Account) -> Vec<Line> {
         &[],
         None,
     )
-}
-
-// ---- conflicts ---------------------------------------------------------------------------------
-
-/// The shared files that changed in two places at once; `cleared` says how many were just cleared.
-pub fn conflicts_screen(
-    term: &Terminal,
-    list: &[Conflict],
-    label: &dyn Fn(&str) -> String,
-    cleared: Option<usize>,
-) -> Vec<Line> {
-    let width = room(term);
-    let mut lines = banner(term, false);
-    if let Some(cleared) = cleared {
-        lines.push(outcome(
-            term,
-            &format!("Cleared {}.", plural(cleared, "conflict")),
-            "done",
-        ));
-        return lines;
-    }
-    if list.is_empty() {
-        lines.push(outcome(term, "No conflicts.", "same"));
-        return lines;
-    }
-    lines.push(heading("CONFLICTS", width, term, &plural(list.len(), "conflict")));
-    lines.push(Vec::new());
-    let indented = |rows: Vec<Line>| {
-        rows.into_iter().map(|row| {
-            let mut line = vec![p("  ")];
-            line.extend(row);
-            line
-        })
-    };
-    for (i, conflict) in list.iter().enumerate() {
-        if i > 0 {
-            lines.push(Vec::new());
-        }
-        let mut head = mark(term.g, "warn");
-        head.push(p(" "));
-        head.push(s(
-            format!("{} in {}", conflict.item, label(&conflict.account)),
-            "bold",
-        ));
-        head.push(s(
-            format!("  {}", conflict.at.as_deref().unwrap_or_default()),
-            "muted",
-        ));
-        lines.extend(wrap_line(&head, width, 2));
-        let kept = if conflict.kept == BASE {
-            BASE.to_owned()
-        } else {
-            label(&conflict.kept)
-        };
-        lines.extend(indented(fact(
-            "Kept",
-            &[p(format!("{kept}'s version"))],
-            width,
-            8,
-            "muted",
-        )));
-        lines.extend(indented(fact(
-            "Backup",
-            &[p(conflict.backup.as_deref().unwrap_or_default())],
-            width,
-            8,
-            "muted",
-        )));
-    }
-    lines.push(Vec::new());
-    lines.extend(fact(
-        "Clear",
-        &[s("baton conflicts --clear", "accent")],
-        width,
-        10,
-        "muted",
-    ));
-    lines
 }
 
 // ---- install and uninstall ----------------------------------------------------------------------

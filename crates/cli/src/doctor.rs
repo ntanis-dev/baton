@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use baton_claude::auth::auth_status;
 use baton_core::claude_path::{Launcher, find_on_path, resolve_claude};
 use baton_core::clock::Ms;
-use baton_core::config::{config_problem, load_config, name_of};
+use baton_core::config::{config_problem, load_config};
 use baton_core::env::Env;
 use baton_core::format::NO_POLLER;
 use baton_core::paths::{Paths, profile_dir, profile_env, same_path};
@@ -22,9 +22,9 @@ use baton_install::ferry::{
 };
 use baton_install::hooks::status_line_shell;
 use baton_install::install::{install_state, runs_from_path};
-use baton_profile::copies::{BASE, read_conflicts};
 use baton_profile::profile::{can_symlink_files, inspect_profile};
-use baton_profile::sync::{full_sync, read_questions};
+use baton_profile::shared::every_question;
+use baton_profile::sync::full_sync;
 use serde_json::{Value, json};
 
 use crate::screens::Check;
@@ -186,56 +186,22 @@ pub fn run_doctor(options: &DoctorOptions<'_>) -> Report {
         if file_links {
             "allowed (shared files are symbolic links)".to_owned()
         } else {
-            "not allowed (Developer Mode off): settings.json, CLAUDE.md and keybindings.json are two-way copies synchronised at every launch and history.jsonl is not shared; turning on Windows Developer Mode (Settings > System > For developers) makes them real links and shares history.jsonl".to_owned()
+            "not allowed (Developer Mode off): settings.json, CLAUDE.md, keybindings.json and history.jsonl are copies Baton keeps in step between the accounts; turning on Windows Developer Mode (Settings > System > For developers) makes them real links".to_owned()
         },
     );
-    let conflicts = read_conflicts(paths);
-    let label = |id: &str| name_of(&config, id);
-    if conflicts.is_empty() {
-        add("copy conflicts", None, "none".to_owned());
-    } else {
-        let last: Vec<String> = conflicts[conflicts.len().saturating_sub(5)..]
-            .iter()
-            .map(|c| {
-                let kept = if c.kept == BASE {
-                    BASE.to_owned()
-                } else {
-                    label(&c.kept)
-                };
-                format!(
-                    "{} changed in {} and elsewhere (kept {kept}'s; {}'s is in {})",
-                    c.item,
-                    label(&c.account),
-                    label(&c.account),
-                    c.backup.as_deref().unwrap_or_default()
-                )
-            })
-            .collect();
-        add(
-            "copy conflicts",
-            Some(false),
-            format!(
-                "{}: {} · baton conflicts --clear once handled",
-                conflicts.len(),
-                last.join("; ")
-            ),
-        );
-    }
-    let differ = if full_sync(&config) {
-        read_questions(paths).len()
-    } else {
-        0
-    };
+    // What the accounts differ on: in the shared files they hold copies of, and with full sync on in
+    // what is set in their own `.claude.json`.
+    let differ = every_question(paths, &config).len();
     add(
         "full sync",
         if differ > 0 { Some(false) } else { None },
-        if !full_sync(&config) {
-            "off: each account keeps its own settings (baton policy --full-sync on)".to_owned()
-        } else if differ > 0 {
+        if differ > 0 {
             format!(
                 "the accounts differ on {differ} setting{}: baton sync",
                 if differ == 1 { "" } else { "s" }
             )
+        } else if !full_sync(&config) {
+            "off: each account keeps its own settings (baton policy --full-sync on)".to_owned()
         } else {
             "on: what is set on one account is set on all".to_owned()
         },
@@ -284,23 +250,16 @@ pub fn run_doctor(options: &DoctorOptions<'_>) -> Report {
             let items = inspect_profile(paths, &account.id, Some(file_links));
             let bad: Vec<String> = items
                 .iter()
-                .filter(|i| {
-                    ["missing", "wrong-link", "conflict", "copy-stale", "unsafe-link"].contains(&i.status)
-                })
+                .filter(|i| ["missing", "wrong-link", "conflict", "unsafe-link"].contains(&i.status))
                 .map(|i| format!("{} {}", i.name, i.status))
                 .collect();
             let count = |status: &str| items.iter().filter(|i| i.status == status).count();
             let detail = if bad.is_empty() {
-                // Left out on purpose (the file-links line above says why).
-                let not_shared: String = items
-                    .iter()
-                    .filter(|i| i.status == "not-shared")
-                    .map(|i| format!(", {} not shared", i.name))
-                    .collect();
+                // A copy that differs is brought in step the next time the account is used.
                 format!(
-                    "{} linked, {} copied{not_shared}",
+                    "{} linked, {} copied",
                     count("linked"),
-                    count("copy-fresh")
+                    count("copy-fresh") + count("copy-changed")
                 )
             } else {
                 format!(

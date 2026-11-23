@@ -1525,7 +1525,7 @@ fn full_sync_before_a_session_starts_baton_asks_whose_setting_stays_when_two_acc
     let said = output.text();
     assert!(
         said.contains(
-            "baton: the accounts differ on theme · 1: \"light\" (acct1) · 2: \"dark-daltonized\" (acct2) · 3: \"dark\" (~/.claude.json) · any other key: later · Ctrl+C: quit"
+            "baton: the accounts differ on theme · 1: \"light\" (acct1) · 2: \"dark-daltonized\" (acct2) · 3: \"dark\" (home) · any other key: later · Ctrl+C: quit"
         ),
         "{said}"
     );

@@ -10,13 +10,20 @@ mod common;
 
 use baton_core::fsutil::read_json;
 use baton_core::paths::global_config_file;
+use baton_testkit::fixtures::bin;
 use baton_testkit::{TestHome, temp_home, write_json};
 use common::baton;
 use serde_json::{Value, json};
 
 /// A home whose plain Claude Code has a theme, with three accounts added through the command line.
+/// Its Claude Code is a stand-in: the real one, run by doctor under a profile, writes settings of its
+/// own there.
 fn home() -> TestHome {
     let home = temp_home();
+    write_json(
+        &home.paths.config,
+        &json!({ "version": 1, "accounts": [], "claudePath": bin("claude-stub").to_string_lossy() }),
+    );
     write_json(
         &home.paths.claude_json,
         &json!({ "theme": "dark", "mcpServers": { "files": { "command": "files" } } }),
@@ -104,11 +111,7 @@ fn what_one_account_changed_goes_to_the_others_and_what_two_changed_is_asked() {
         "{}",
         sync.stdout
     );
-    assert!(
-        said.contains(&"\"dark\" ~/.claude.json".to_owned()),
-        "{}",
-        sync.stdout
-    );
+    assert!(said.contains(&"\"dark\" home".to_owned()), "{}", sync.stdout);
     assert!(
         said.contains(&"Answer baton sync take <number> <account>".to_owned()),
         "{}",

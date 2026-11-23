@@ -40,7 +40,8 @@ use baton_core::term::{Terminal, notice, terminal_for};
 use baton_core::usage::{LIMIT_ERRORS, Others, TurnSample, read_rises, record_event};
 use baton_core::window::Limit;
 use baton_profile::profile::{LinkOptions, carry_trust, link_profile};
-use baton_profile::sync::{Apply, HOME, full_sync, sync_settings, take};
+use baton_profile::shared::{sync_everything, take_everything};
+use baton_profile::sync::{Apply, HOME};
 use serde_json::{Value, json};
 
 use crate::args::{Live, ParsedArgs, is_session_id, parse_claude_args, resume_args};
@@ -1290,12 +1291,9 @@ impl Lead {
             return true;
         }
         let config = load_config(&self.paths);
-        if !full_sync(&config) {
-            return true;
-        }
         let now = self.time();
         // What changed since Baton last looked may be a question by now.
-        let Ok(report) = sync_settings(&self.paths, &config, Apply::Nothing, now) else {
+        let Ok(report) = sync_everything(&self.paths, &config, Apply::Nothing, now) else {
             return true;
         };
         if report.questions.is_empty() {
@@ -1303,7 +1301,7 @@ impl Lead {
         }
         let label = |who: &str| {
             if who == HOME {
-                "~/.claude.json".to_owned()
+                "home".to_owned()
             } else {
                 name_of(&config, who)
             }
@@ -1319,7 +1317,7 @@ impl Lead {
             },
         );
         for (leaf, who) in &answers.taken {
-            if let Err(error) = take(&self.paths, &config, std::slice::from_ref(leaf), who, now) {
+            if let Err(error) = take_everything(&self.paths, &config, std::slice::from_ref(leaf), who, now) {
                 self.say(&format!("baton: could not keep that answer: {error}"));
             }
         }

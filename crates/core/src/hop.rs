@@ -10,10 +10,11 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::clock::{Ms, ms_of};
-use crate::config::{By, find_account, name_of};
+use crate::config::{Account, By, Config, find_account, name_of};
 use crate::env::Env;
 use crate::fsutil::read_json;
 use crate::json::Get;
+use crate::names::same_name;
 use crate::paths::Paths;
 use crate::policy::{hop_run, pick_hop, states_for};
 use crate::sessions::{
@@ -133,6 +134,23 @@ pub struct HopRequest<'a> {
     pub now: Ms,
 }
 
+/// The account whose name is `key` once the apostrophes are left out of both: the `/hop` command
+/// cannot carry one through the shell it runs in, so `Janes account` finds `Jane's account`. Only
+/// when one account's name fits, and only for a name (an id has none).
+fn without_apostrophes<'a>(config: &'a Config, key: &str, by: By) -> Option<&'a Account> {
+    if by != By::Name {
+        return None;
+    }
+    let plain = |name: &str| -> String { name.chars().filter(|c| !matches!(c, '\'' | '\u{2019}')).collect() };
+    let wanted = plain(key);
+    let mut found = config
+        .accounts
+        .iter()
+        .filter(|account| same_name(&plain(&account.name), &wanted));
+    let first = found.next()?;
+    found.next().is_none().then_some(first)
+}
+
 /// Asks the wrapper running a session to move it. The request carries the account's id; the result
 /// names both accounts by their current names.
 pub fn hop(paths: &Paths, request: &HopRequest<'_>) -> Result<Hop, HopError> {
@@ -155,7 +173,9 @@ pub fn hop(paths: &Paths, request: &HopRequest<'_>) -> Result<Hop, HopError> {
     let label = |id: &str| name_of(&snapshot.config, id);
     let mut target = None;
     if let Some(to) = request.to.filter(|to| !to.is_empty()) {
-        let Some(account) = find_account(&snapshot.config, to, request.to_by) else {
+        let Some(account) = find_account(&snapshot.config, to, request.to_by)
+            .or_else(|| without_apostrophes(&snapshot.config, to, request.to_by))
+        else {
             return Err(HopError::new(format!("No account named {to}.")));
         };
         target = Some(account.id.clone());
@@ -281,6 +301,24 @@ mod tests {
             resolve_session(&paths, None, &env).unwrap_err().message,
             "Several conversations run under baton; name one: held, other"
         );
+    }
+
+    #[test]
+    fn a_name_typed_without_its_apostrophe_finds_the_account() {
+        let config = crate::config::normalize_config(&json!({ "accounts": [
+            { "id": "jane", "name": "Jane's account" },
+            { "id": "other", "name": "Janes other" },
+            { "id": "a", "name": "It's" },
+            { "id": "b", "name": "Its" }
+        ] }));
+        let found = |key: &str| without_apostrophes(&config, key, By::Name).map(|a| a.id.as_str());
+        assert_eq!(found("Janes account"), Some("jane"));
+        assert_eq!(found("JANES ACCOUNT"), Some("jane"));
+        assert_eq!(found("Jane\u{2019}s account"), Some("jane"));
+        assert_eq!(found("Jane"), None);
+        // Two names that are one without the apostrophe: neither is guessed.
+        assert_eq!(found("Its"), None);
+        assert_eq!(without_apostrophes(&config, "Janes account", By::Id), None);
     }
 
     #[test]

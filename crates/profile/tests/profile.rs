@@ -141,7 +141,7 @@ fn a_profile_links_the_shared_bases_folders_and_copies_its_files_when_file_links
     }
     assert_eq!(action(&report, "settings.json"), "copied");
     assert_eq!(action(&report, "CLAUDE.md"), "copied");
-    assert_eq!(action(&report, "history.jsonl"), "skipped");
+    assert_eq!(action(&report, "history.jsonl"), "copied");
     assert_eq!(action(&report, "agents"), "no-source");
     assert!(
         !fs::symlink_metadata(profile.join("settings.json"))
@@ -167,7 +167,7 @@ fn a_profile_links_the_shared_bases_folders_and_copies_its_files_when_file_links
 }
 
 #[test]
-fn linking_again_changes_nothing_and_a_changed_source_file_is_refreshed_at_the_next_launch() {
+fn linking_again_changes_nothing_and_a_changed_source_file_is_brought_in_step_at_the_next_launch() {
     let home = temp_home();
     let paths = &home.paths;
     shared_base(paths);
@@ -184,47 +184,46 @@ fn linking_again_changes_nothing_and_a_changed_source_file_is_refreshed_at_the_n
         &json!({ "theme": "light" }),
     );
     let refreshed = link_profile(paths, "acct2", &copy_mode()).unwrap();
-    assert_eq!(action(&refreshed, "settings.json"), "refreshed");
+    assert_eq!(action(&refreshed, "settings.json"), "synced");
     assert_eq!(
         read_json(&profile_dir(paths, "acct2").join("settings.json")),
         Some(json!({ "theme": "light" }))
     );
-    // The prompt history is left out on purpose where file links are not allowed: that is "not
-    // shared", never "missing".
+    // Everything is shared: by a link, or by a copy that is the same as ~/.claude's.
     let rest: Vec<Inspected> = inspect_profile(paths, "acct2", Some(false))
         .into_iter()
         .filter(|i| !["linked", "copy-fresh", "no-source"].contains(&i.status))
         .collect();
-    assert_eq!(
-        rest,
-        vec![Inspected {
-            name: "history.jsonl".into(),
-            status: "not-shared",
-            detail: None
-        }]
-    );
+    assert_eq!(rest, Vec::new());
 }
 
 #[test]
-fn the_prompt_history_is_left_out_on_purpose_without_file_links_and_missing_with_them() {
+fn the_prompt_history_is_a_copy_too_where_file_links_are_not_allowed() {
     let home = temp_home();
     let paths = &home.paths;
     shared_base(paths);
     link_profile(paths, "acct2", &copy_mode()).unwrap();
-    let status = |file_links: bool| {
-        inspect_profile(paths, "acct2", Some(file_links))
+    let status = || {
+        inspect_profile(paths, "acct2", Some(false))
             .into_iter()
             .find(|i| i.name == "history.jsonl")
             .unwrap()
             .status
     };
-    assert_eq!(status(false), "not-shared");
-    // With file links the link should be there, and a baton session makes it.
-    assert_eq!(status(true), "missing");
-    // A profile whose Claude Code made a history of its own keeps it.
-    write(&profile_dir(paths, "acct2").join("history.jsonl"), "{}\n");
-    assert_eq!(status(false), "own");
-    assert_eq!(status(true), "own");
+    assert_eq!(status(), "copy-fresh");
+    // What the profile's Claude Code adds to its own is not in ~/.claude's until the next sync.
+    let own = profile_dir(paths, "acct2").join("history.jsonl");
+    write(&own, "{}\n{\"display\":\"more\",\"timestamp\":5}\n");
+    assert_eq!(status(), "copy-changed");
+    link_profile(paths, "acct2", &copy_mode()).unwrap();
+    assert_eq!(status(), "copy-fresh");
+    assert!(
+        fs::read_to_string(paths.claude_dir.join("history.jsonl"))
+            .unwrap()
+            .contains("more")
+    );
+    fs::remove_file(&own).unwrap();
+    assert_eq!(status(), "missing");
 }
 
 #[test]
@@ -244,17 +243,21 @@ fn file_symbolic_links_are_used_where_the_os_allows_them() {
         &profile.join("settings.json"),
         &paths.claude_dir.join("settings.json")
     ));
-    // A file of its own with the same bytes becomes the link; one that differs is a conflict.
+    // A file of its own becomes the link: what it holds that ~/.claude's does not goes there first.
     let other = profile_dir(paths, "acct3");
     write(&other.join("CLAUDE.md"), "# rules\n");
     write(&other.join("settings.json"), "{ \"mine\": true }");
     let report = link_profile(paths, "acct3", &without_sync(true)).unwrap();
     assert_eq!(action(&report, "CLAUDE.md"), "linked");
-    assert_eq!(action(&report, "settings.json"), "conflict");
+    assert_eq!(action(&report, "settings.json"), "linked");
     assert_eq!(
-        fs::read_to_string(other.join("settings.json")).unwrap(),
-        "{ \"mine\": true }"
+        read_json(&paths.claude_dir.join("settings.json")),
+        Some(json!({ "theme": "dark", "mine": true }))
     );
+    assert!(is_link_to(
+        &other.join("settings.json"),
+        &paths.claude_dir.join("settings.json")
+    ));
     let inspected = inspect_profile(paths, "acct2", Some(true));
     assert!(
         inspected

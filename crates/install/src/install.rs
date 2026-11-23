@@ -142,10 +142,13 @@ pub fn hop_command_text(exe: &Path) -> String {
         "---".to_owned(),
         format!("description: Move this conversation to another account at the end of this turn {HOP_MARKER}"),
         "argument-hint: \"[account]\"".to_owned(),
-        format!("allowed-tools: Bash({baton}:*)"),
+        // Only `baton hop`, nothing else of baton or of the shell.
+        format!("allowed-tools: Bash({baton} hop:*)"),
         "disable-model-invocation: true".to_owned(),
         "---".to_owned(),
-        // Quoted: an account name may hold spaces and any character.
+        // In single quotes, which Git Bash and PowerShell both read as the text it is: an account
+        // name may hold spaces and anything a shell would act on. An apostrophe is the one thing no
+        // quoting carries through both, so `baton hop` finds a name typed without its apostrophes.
         format!("!`{baton} hop --session \"${{CLAUDE_SESSION_ID}}\" --from-command --to='$ARGUMENTS'`"),
         String::new(),
         "Baton was asked to move this conversation to another account; its answer is above. If it accepted, the move happens when this turn ends: reply with one short line saying so and do nothing else. If it refused, tell the operator why in one line.".to_owned(),
@@ -1298,10 +1301,10 @@ mod tests {
         let text = hop_command_text(Path::new("C:/tools/baton/baton.exe"));
         assert_eq!(
             text,
-            "---\ndescription: Move this conversation to another account at the end of this turn (installed by Baton)\nargument-hint: \"[account]\"\nallowed-tools: Bash(C:/tools/baton/baton.exe:*)\ndisable-model-invocation: true\n---\n!`C:/tools/baton/baton.exe hop --session \"${CLAUDE_SESSION_ID}\" --from-command --to='$ARGUMENTS'`\n\nBaton was asked to move this conversation to another account; its answer is above. If it accepted, the move happens when this turn ends: reply with one short line saying so and do nothing else. If it refused, tell the operator why in one line.\n"
+            "---\ndescription: Move this conversation to another account at the end of this turn (installed by Baton)\nargument-hint: \"[account]\"\nallowed-tools: Bash(C:/tools/baton/baton.exe hop:*)\ndisable-model-invocation: true\n---\n!`C:/tools/baton/baton.exe hop --session \"${CLAUDE_SESSION_ID}\" --from-command --to='$ARGUMENTS'`\n\nBaton was asked to move this conversation to another account; its answer is above. If it accepted, the move happens when this turn ends: reply with one short line saying so and do nothing else. If it refused, tell the operator why in one line.\n"
         );
         let spaced = hop_command_text(Path::new("C:/Program Files/Baton/baton.exe"));
-        assert!(spaced.contains("allowed-tools: Bash(baton:*)\n"));
+        assert!(spaced.contains("allowed-tools: Bash(baton hop:*)\n"));
         assert!(spaced.contains("!`baton hop --session "));
     }
 }

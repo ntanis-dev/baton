@@ -266,16 +266,6 @@ pub fn overview_rows(state: &State, width: usize) -> Vec<BodyLine> {
             .into(),
         );
     }
-    if data.conflicts > 0 {
-        body.push(BodyLine::default());
-        body.push(
-            vec![s(
-                format!("{} shared-file conflicts · baton conflicts", data.conflicts),
-                "warn",
-            )]
-            .into(),
-        );
-    }
     body
 }
 

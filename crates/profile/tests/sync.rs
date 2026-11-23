@@ -184,10 +184,13 @@ fn what_an_account_kept_for_itself_becomes_everyones_unless_the_same_name_is_tak
         ["linked", "copied", "ok"].contains(&said(&report, "CLAUDE.md").0),
         "{report:?}"
     );
-    // The prompt history is appended by every running claude: it is never taken from a profile.
+    // The prompt history is everyone's lines together: what only this profile had is ~/.claude's too.
     write(&profile.join("history.jsonl"), "{}\n");
     link(paths, "old");
-    assert!(!paths.claude_dir.join("history.jsonl").exists());
+    assert_eq!(
+        fs::read_to_string(paths.claude_dir.join("history.jsonl")).unwrap(),
+        "{}\n"
+    );
 }
 
 #[test]

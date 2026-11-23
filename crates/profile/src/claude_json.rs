@@ -121,8 +121,18 @@ impl Drop for SaveLock {
 /// while it is still what `change` was given: when a save landed in between (the lock could not be had
 /// in time, or was taken over), `change` is asked again with the newer file. Returns whether the file
 /// was written.
-pub fn rewrite(file: &Path, mut change: impl FnMut(&Loaded) -> Option<Value>) -> io::Result<bool> {
-    let _lock = SaveLock::take(file, LOCK_WAIT);
+pub fn rewrite(file: &Path, change: impl FnMut(&Loaded) -> Option<Value>) -> io::Result<bool> {
+    rewrite_with(file, true, change)
+}
+
+/// [`rewrite`], with Claude Code's lock only when `lock` says so: it is the lock of `.claude.json`.
+/// Any other file Claude Code saves is guarded by the check alone.
+pub fn rewrite_with(
+    file: &Path,
+    lock: bool,
+    mut change: impl FnMut(&Loaded) -> Option<Value>,
+) -> io::Result<bool> {
+    let _lock = lock.then(|| SaveLock::take(file, LOCK_WAIT)).flatten();
     for _ in 0..TRIES {
         let (before, loaded) = read(file);
         let Some(next) = change(&loaded) else {

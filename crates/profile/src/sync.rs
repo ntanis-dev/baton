@@ -44,7 +44,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::claude_json::{Loaded, load, rewrite};
+use crate::claude_json::{Loaded, load, rewrite_with};
 use crate::profile::{SEED_KEYS, SEED_PROJECT_KEYS, normalize_project_key};
 
 /// The name `~/.claude.json` takes part under (never an account's id).
@@ -90,6 +90,81 @@ fn keys_of(config: &Config) -> Keys {
     Keys {
         top: join(&SEED_KEYS, &config.sync_keys),
         project: join(&SEED_PROJECT_KEYS, &config.sync_project_keys),
+    }
+}
+
+/// A file that is kept in step leaf by leaf: every profile's `.claude.json`, or a file of `~/.claude`
+/// that the profiles hold copies of ([`crate::shared`]).
+#[derive(Clone, Debug)]
+pub(crate) struct Doc {
+    /// Its name: `.claude.json`, `settings.json`, `keybindings.json`.
+    pub(crate) name: &'static str,
+    /// Where Baton keeps what it knows of it.
+    pub(crate) state: PathBuf,
+    /// The keys that take part; None for every key of the file.
+    keys: Option<Keys>,
+    /// The participants and their files, [`HOME`] first.
+    pub(crate) files: Vec<(String, PathBuf)>,
+    /// Whether it is `.claude.json`: the home's is only read, a grant stays granted, and a participant
+    /// that lost most of what it had was reset. A copied file is one file of the operator's, written
+    /// everywhere, where what was taken out was taken out.
+    claude_json: bool,
+}
+
+impl Doc {
+    /// Every profile's `.claude.json`, with `~/.claude.json`.
+    pub(crate) fn claude_json(paths: &Paths, config: &Config) -> Doc {
+        let mut files = vec![(HOME.to_owned(), paths.claude_json.clone())];
+        for account in &config.accounts {
+            files.push((account.id.clone(), global_config_file(paths, &account.id)));
+        }
+        Doc {
+            name: ".claude.json",
+            state: sync_file(paths),
+            keys: Some(keys_of(config)),
+            files,
+            claude_json: true,
+        }
+    }
+
+    /// A file of `~/.claude` that these participants hold copies of.
+    pub(crate) fn copied(name: &'static str, state: PathBuf, files: Vec<(String, PathBuf)>) -> Doc {
+        Doc {
+            name,
+            state,
+            keys: None,
+            files,
+            claude_json: false,
+        }
+    }
+
+    /// The name a leaf of this file has in a question: the leaf's own for `.claude.json`, with the
+    /// file's name before it for any other.
+    fn asked(&self, leaf: &str) -> String {
+        if self.claude_json {
+            leaf.to_owned()
+        } else {
+            format!("{}{leaf}", self.name)
+        }
+    }
+
+    /// The leaf a question's name stands for, when the question is about this file.
+    fn leaf_of<'a>(&self, asked: &'a str) -> Option<&'a str> {
+        if self.claude_json {
+            asked.starts_with('[').then_some(asked)
+        } else {
+            asked.strip_prefix(self.name).filter(|leaf| leaf.starts_with('['))
+        }
+    }
+
+    /// A leaf in words, with the file's name when it is not `.claude.json`.
+    fn label(&self, leaf: &Leaf, spellings: &BTreeMap<String, String>) -> String {
+        let own = leaf.label(spellings);
+        if self.claude_json {
+            own
+        } else {
+            format!("{} · {own}", self.name)
+        }
     }
 }
 
@@ -200,8 +275,8 @@ fn is_stock(value: &Value) -> bool {
 /// The leaves of a config, by name.
 type Leaves = BTreeMap<String, Value>;
 
-/// Adds the leaves of one key's value.
-fn flatten_key(out: &mut Leaves, project: Option<&str>, key: &str, value: &Value) {
+/// Adds the leaves of one key's value. With `grants`, a grant that was never given is no value.
+fn flatten_key(out: &mut Leaves, project: Option<&str>, key: &str, value: &Value, grants: bool) {
     let leaf = |entry: Option<&str>, item: Option<&Value>| Leaf {
         project: project.map(str::to_owned),
         key: key.to_owned(),
@@ -233,20 +308,26 @@ fn flatten_key(out: &mut Leaves, project: Option<&str>, key: &str, value: &Value
         scalar => {
             let own = leaf(None, None);
             // A grant that was never given is no value at all.
-            if !(own.grants() && is_stock(scalar)) {
+            if !(grants && own.grants() && is_stock(scalar)) {
                 out.insert(own.id(), scalar.clone());
             }
         }
     }
 }
 
-/// The leaves of a `.claude.json`, and how it spells each folder.
-fn flatten(config: &Object, keys: &Keys) -> (Leaves, BTreeMap<String, String>) {
+/// The leaves of a file, and how it spells each folder.
+fn flatten(config: &Object, doc: &Doc) -> (Leaves, BTreeMap<String, String>) {
     let mut out = Leaves::new();
     let mut spellings = BTreeMap::new();
+    let Some(keys) = &doc.keys else {
+        for (key, value) in config {
+            flatten_key(&mut out, None, key, value, false);
+        }
+        return (out, spellings);
+    };
     for key in &keys.top {
         if let Some(value) = config.get(key) {
-            flatten_key(&mut out, None, key, value);
+            flatten_key(&mut out, None, key, value, true);
         }
     }
     if let Some(Value::Object(folders)) = config.get("projects") {
@@ -258,7 +339,7 @@ fn flatten(config: &Object, keys: &Keys) -> (Leaves, BTreeMap<String, String>) {
             spellings.entry(folder.clone()).or_insert_with(|| path.clone());
             for key in &keys.project {
                 if let Some(value) = entry.get(key) {
-                    flatten_key(&mut out, Some(&folder), key, value);
+                    flatten_key(&mut out, Some(&folder), key, value, true);
                 }
             }
         }
@@ -411,7 +492,7 @@ fn lock(paths: &Paths, wait: Duration) -> Option<OsLock> {
 struct Party {
     /// An account's id, or [`HOME`].
     id: String,
-    /// Its `.claude.json`.
+    /// Its file.
     file: PathBuf,
     /// The file's content; None when there is no file yet.
     config: Option<Object>,
@@ -433,7 +514,7 @@ impl Party {
 }
 
 /// Reads a participant.
-fn party(id: &str, file: &Path, keys: &Keys, spellings: &mut BTreeMap<String, String>) -> Party {
+fn party(id: &str, file: &Path, doc: &Doc, spellings: &mut BTreeMap<String, String>) -> Party {
     let (config, unreadable) = match load(file) {
         Loaded::Json(Value::Object(config)) => (Some(config), false),
         Loaded::Missing => (None, false),
@@ -441,7 +522,7 @@ fn party(id: &str, file: &Path, keys: &Keys, spellings: &mut BTreeMap<String, St
     };
     let mut leaves = Leaves::new();
     if let Some(config) = &config {
-        let (own, spelled) = flatten(config, keys);
+        let (own, spelled) = flatten(config, doc);
         leaves = own;
         for (folder, path) in spelled {
             spellings.entry(folder).or_insert(path);
@@ -554,7 +635,7 @@ pub struct SyncReport {
 
 /// Folds what one participant changed into what the accounts agree on. Returns the leaves on which it
 /// differs from the others in a way only the operator can settle.
-fn collect(state: &mut State, party: &Party, report: &mut SyncReport) -> BTreeSet<String> {
+fn collect(state: &mut State, party: &Party, report: &mut SyncReport, doc: &Doc) -> BTreeSet<String> {
     let mut blocked = BTreeSet::new();
     if party.config.is_none() {
         return blocked;
@@ -565,7 +646,7 @@ fn collect(state: &mut State, party: &Party, report: &mut SyncReport) -> BTreeSe
         .keys()
         .filter(|leaf| !party.leaves.contains_key(*leaf))
         .count();
-    if gone >= 5 && gone * 2 > seen.len() {
+    if doc.claude_json && gone >= 5 && gone * 2 > seen.len() {
         seen.clear();
         report.reset.push(party.id.clone());
     }
@@ -594,7 +675,7 @@ fn collect(state: &mut State, party: &Party, report: &mut SyncReport) -> BTreeSe
         // The others did not move meanwhile: the change stands, unless it takes back a grant, which
         // no participant does alone. Otherwise both moved.
         let side = if last == agreed_mark.as_ref() {
-            Some(if takes_back(id, theirs, agreed) {
+            Some(if doc.claude_json && takes_back(id, theirs, agreed) {
                 Side::Agreed
             } else {
                 Side::Theirs
@@ -615,7 +696,7 @@ fn collect(state: &mut State, party: &Party, report: &mut SyncReport) -> BTreeSe
                 remember(&mut next);
                 if let Some(leaf) = Leaf::parse(id) {
                     report.brought.push(Brought {
-                        label: leaf.label(&state.spellings),
+                        label: doc.label(&leaf, &state.spellings),
                         from: party.id.clone(),
                     });
                 }
@@ -635,7 +716,13 @@ fn collect(state: &mut State, party: &Party, report: &mut SyncReport) -> BTreeSe
 /// leaves that wait for the operator. Returns how many settings were set or taken out; None when the
 /// file is no longer what this sync read (a Claude Code saved it meanwhile): nothing is written then,
 /// and what was saved is for the next sync to fold in.
-fn apply(state: &mut State, party: &Party, blocked: Option<&BTreeSet<String>>) -> io::Result<Option<usize>> {
+fn apply(
+    state: &mut State,
+    party: &Party,
+    blocked: Option<&BTreeSet<String>>,
+    doc: &Doc,
+    create: bool,
+) -> io::Result<Option<usize>> {
     let mut config = party.config.clone().unwrap_or_default();
     let before = state.seen.get(&party.id).cloned();
     let mut seen = state.seen.remove(&party.id).unwrap_or_default();
@@ -662,9 +749,13 @@ fn apply(state: &mut State, party: &Party, blocked: Option<&BTreeSet<String>>) -
             }
         }
     }
-    if changed > 0 {
+    // A holder with no file of its own gets one, even when there is nothing to put in it yet: a copy
+    // of a file that says nothing is still a copy.
+    let create = create && party.config.is_none();
+    if changed > 0 || create {
         let mut moved = false;
-        rewrite(&party.file, |loaded| {
+        // Claude Code's own lock is on its `.claude.json` alone.
+        rewrite_with(&party.file, doc.claude_json, |loaded| {
             moved = !party.is(loaded);
             (!moved).then(|| Value::Object(config.clone()))
         })?;
@@ -676,25 +767,22 @@ fn apply(state: &mut State, party: &Party, blocked: Option<&BTreeSet<String>>) -
         }
     }
     state.seen.insert(party.id.clone(), seen);
-    Ok(Some(changed))
+    Ok(Some(if create { changed.max(1) } else { changed }))
 }
 
-/// Every participant as it is on disk: `~/.claude.json` first, then the accounts in their order.
-fn parties(paths: &Paths, config: &Config, keys: &Keys, state: &mut State) -> Vec<Party> {
-    let mut out = vec![party(HOME, &paths.claude_json, keys, &mut state.spellings)];
-    for account in &config.accounts {
-        out.push(party(
-            &account.id,
-            &global_config_file(paths, &account.id),
-            keys,
-            &mut state.spellings,
-        ));
-    }
-    out
+/// Every participant as it is on disk: the home's first, then the accounts in their order.
+fn parties(doc: &Doc, state: &mut State) -> Vec<Party> {
+    doc.files
+        .iter()
+        .map(|(id, file)| party(id, file, doc, &mut state.spellings))
+        .collect()
 }
 
 /// Whether a leaf belongs to a key that is kept in step.
-fn kept(id: &str, keys: &Keys) -> bool {
+fn kept(id: &str, doc: &Doc) -> bool {
+    let Some(keys) = &doc.keys else {
+        return true;
+    };
     Leaf::parse(id).is_some_and(|leaf| match leaf.project {
         Some(_) => keys.project.contains(&leaf.key),
         None => keys.top.contains(&leaf.key),
@@ -702,12 +790,12 @@ fn kept(id: &str, keys: &Keys) -> bool {
 }
 
 /// Saves the state when something other than its date changed.
-fn save(paths: &Paths, before: &State, state: &mut State, now: Ms) -> io::Result<()> {
+fn save(doc: &Doc, before: &State, state: &mut State, now: Ms) -> io::Result<()> {
     state.version = 1;
     state.at = before.at.clone();
     if before != state {
         state.at = Some(iso(now));
-        write_json_atomic(&sync_file(paths), state)?;
+        write_json_atomic(&doc.state, state)?;
     }
     Ok(())
 }
@@ -729,9 +817,20 @@ fn sync_within(
     now: Ms,
     wait: Duration,
 ) -> io::Result<SyncReport> {
+    let Some(_lock) = lock(paths, wait) else {
+        return Ok(SyncReport {
+            busy: true,
+            ..SyncReport::default()
+        });
+    };
+    sync_doc(&Doc::claude_json(paths, config), which, now)
+}
+
+/// Brings one file in step among its participants. The caller holds the sync lock.
+pub(crate) fn sync_doc(doc: &Doc, which: Apply<'_>, now: Ms) -> io::Result<SyncReport> {
     let mut merged = SyncReport::default();
     for round in 1..=ROUNDS {
-        let (report, moved) = sync_once(paths, config, which, now, wait)?;
+        let (report, moved) = sync_once(doc, which, now)?;
         // What an earlier round brought and wrote stays said.
         merged.brought.extend(report.brought);
         merged.written.extend(report.written);
@@ -740,36 +839,25 @@ fn sync_within(
             written: merged.written,
             ..report
         };
-        if !moved || merged.busy || round == ROUNDS {
+        if !moved || round == ROUNDS {
             break;
         }
     }
     Ok(merged)
 }
 
-/// One round of a sync, and whether a profile it was to write had been saved by a Claude Code since it
-/// was read: that profile was left as it is, and another round reads it anew.
-fn sync_once(
-    paths: &Paths,
-    config: &Config,
-    which: Apply<'_>,
-    now: Ms,
-    wait: Duration,
-) -> io::Result<(SyncReport, bool)> {
+/// One round of a sync, and whether a file it was to write had been saved by a Claude Code since it
+/// was read: that file was left as it is, and another round reads it anew.
+fn sync_once(doc: &Doc, which: Apply<'_>, now: Ms) -> io::Result<(SyncReport, bool)> {
     let mut report = SyncReport::default();
-    let Some(_lock) = lock(paths, wait) else {
-        report.busy = true;
-        return Ok((report, false));
-    };
-    let before: State = read_json_as(&sync_file(paths)).unwrap_or_default();
+    let before: State = read_json_as(&doc.state).unwrap_or_default();
     let mut state = before.clone();
-    let keys = keys_of(config);
     // A key that is no longer kept in step is forgotten, not taken out of anyone's file.
-    state.base.retain(|id, _| kept(id, &keys));
+    state.base.retain(|id, _| kept(id, doc));
     for seen in state.seen.values_mut() {
-        seen.retain(|id, _| kept(id, &keys));
+        seen.retain(|id, _| kept(id, doc));
     }
-    let all = parties(paths, config, &keys, &mut state);
+    let all = parties(doc, &mut state);
     state.seen.retain(|id, _| all.iter().any(|party| party.id == *id));
     let mut blocked: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for party in &all {
@@ -777,13 +865,13 @@ fn sync_once(
             report.unreadable.push(party.id.clone());
             continue;
         }
-        let own = collect(&mut state, party, &mut report);
+        let own = collect(&mut state, party, &mut report, doc);
         if !own.is_empty() {
             blocked.insert(party.id.clone(), own);
         }
     }
     // A grant nobody holds any more was taken back everywhere: only then is it gone.
-    if all.iter().all(|party| !party.unreadable) {
+    if doc.claude_json && all.iter().all(|party| !party.unreadable) {
         state.base.retain(|id, _| {
             !Leaf::parse(id).is_some_and(|leaf| leaf.one_way())
                 || all.iter().any(|party| party.leaves.contains_key(id))
@@ -791,16 +879,20 @@ fn sync_once(
     }
     let mut applied: BTreeSet<&str> = BTreeSet::new();
     let mut moved = false;
-    for party in all.iter().filter(|party| party.id != HOME && !party.unreadable) {
+    // A copied file that somebody has is made for every holder that has none.
+    let create = !doc.claude_json && all.iter().any(|party| party.config.is_some());
+    for party in all.iter().filter(|party| !party.unreadable) {
+        // `~/.claude.json` is only ever read; a copied file's original is written whenever anything is.
+        let home = party.id == HOME;
         let wanted = match which {
             Apply::Nothing => false,
-            Apply::One(id) => party.id == id,
-            Apply::All => true,
+            Apply::One(id) => party.id == id || (home && !doc.claude_json),
+            Apply::All => !(home && doc.claude_json),
         };
         if !wanted {
             continue;
         }
-        let Some(settings) = self::apply(&mut state, party, blocked.get(&party.id))? else {
+        let Some(settings) = self::apply(&mut state, party, blocked.get(&party.id), doc, create)? else {
             moved = true;
             continue;
         };
@@ -828,8 +920,8 @@ fn sync_once(
         .filter_map(|id| {
             let leaf = Leaf::parse(id)?;
             Some(Question {
-                leaf: id.clone(),
-                label: leaf.label(&state.spellings),
+                leaf: doc.asked(id),
+                label: doc.label(&leaf, &state.spellings),
                 values: all
                     .iter()
                     .filter(|party| party.config.is_some() || applied.contains(party.id.as_str()))
@@ -841,7 +933,7 @@ fn sync_once(
                 at: before
                     .pending
                     .iter()
-                    .find(|known| known.leaf == *id)
+                    .find(|known| doc.leaf_of(&known.leaf) == Some(id.as_str()))
                     .and_then(|known| known.at.clone())
                     .or_else(|| Some(iso(now))),
             })
@@ -849,7 +941,7 @@ fn sync_once(
         .collect();
     state.pending = pending;
     report.questions = state.pending.clone();
-    save(paths, &before, &mut state, now)?;
+    save(doc, &before, &mut state, now)?;
     Ok((report, moved))
 }
 
@@ -860,60 +952,72 @@ pub fn read_questions(paths: &Paths) -> Vec<Question> {
         .unwrap_or_default()
 }
 
-/// Answers questions: for each of these leaves, the value `who` holds (an account's id, or [`HOME`])
-/// becomes the one every account has. Then every profile is brought in step.
+/// Answers questions about `.claude.json`: for each of these leaves, the value `who` holds (an
+/// account's id, or [`HOME`]) becomes the one every account has. Then every profile is brought in step.
 pub fn take(paths: &Paths, config: &Config, leaves: &[String], who: &str, now: Ms) -> io::Result<SyncReport> {
-    {
-        let Some(_lock) = lock(paths, LOCK_WAIT) else {
-            return Ok(SyncReport {
-                busy: true,
-                ..SyncReport::default()
-            });
-        };
-        let before: State = read_json_as(&sync_file(paths)).unwrap_or_default();
-        let mut state = before.clone();
-        let keys = keys_of(config);
-        let all = parties(paths, config, &keys, &mut state);
-        let Some(chosen) = all.iter().find(|party| party.id == who && party.config.is_some()) else {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("{who} has no settings to take"),
-            ));
-        };
-        for id in leaves {
-            match chosen.leaves.get(id) {
-                Some(value) => {
-                    state.base.insert(id.clone(), value.clone());
-                }
-                None => {
-                    state.base.remove(id);
-                }
-            }
-            // What everyone holds now is a leftover: it takes the answer when its turn comes.
-            for party in all.iter().filter(|party| party.config.is_some()) {
-                let seen = state.seen.entry(party.id.clone()).or_default();
-                match party.leaves.get(id) {
-                    Some(value) => {
-                        seen.insert(id.clone(), mark(value));
-                    }
-                    None => {
-                        seen.remove(id);
-                    }
-                }
-            }
-            state.pending.retain(|question| question.leaf != *id);
-        }
-        save(paths, &before, &mut state, now)?;
-    }
-    sync_settings(paths, config, Apply::All, now)
+    let Some(_lock) = lock(paths, LOCK_WAIT) else {
+        return Ok(SyncReport {
+            busy: true,
+            ..SyncReport::default()
+        });
+    };
+    let doc = Doc::claude_json(paths, config);
+    take_in(&doc, leaves, who, now)?;
+    sync_doc(&doc, Apply::All, now)
 }
 
-/// Forgets what Baton saw in a removed account's profile.
-pub fn forget_account(paths: &Paths, id: &str) -> io::Result<()> {
-    let Some(_lock) = lock(paths, LOCK_WAIT) else {
-        return Ok(());
+/// Makes the value `who` holds the agreed one for each of these questions that is about `doc`; an
+/// error when `who` holds no such file. The caller holds the sync lock, and brings the file in step
+/// afterwards.
+pub(crate) fn take_in(doc: &Doc, asked: &[String], who: &str, now: Ms) -> io::Result<()> {
+    let leaves: Vec<&str> = asked.iter().filter_map(|asked| doc.leaf_of(asked)).collect();
+    let before: State = read_json_as(&doc.state).unwrap_or_default();
+    let mut state = before.clone();
+    let all = parties(doc, &mut state);
+    let Some(chosen) = all.iter().find(|party| party.id == who && party.config.is_some()) else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{who} has no settings to take"),
+        ));
     };
-    let Some(mut state) = read_json_as::<State>(&sync_file(paths)) else {
+    for id in leaves {
+        match chosen.leaves.get(id) {
+            Some(value) => {
+                state.base.insert(id.to_owned(), value.clone());
+            }
+            None => {
+                state.base.remove(id);
+            }
+        }
+        // What everyone holds now is a leftover: it takes the answer when its turn comes.
+        for party in all.iter().filter(|party| party.config.is_some()) {
+            let seen = state.seen.entry(party.id.clone()).or_default();
+            match party.leaves.get(id) {
+                Some(value) => {
+                    seen.insert(id.to_owned(), mark(value));
+                }
+                None => {
+                    seen.remove(id);
+                }
+            }
+        }
+        state
+            .pending
+            .retain(|question| doc.leaf_of(&question.leaf) != Some(id));
+    }
+    save(doc, &before, &mut state, now)
+}
+
+/// The questions about a file, as its last sync left them.
+pub(crate) fn questions_in(state: &Path) -> Vec<Question> {
+    read_json_as::<State>(state)
+        .map(|state| state.pending)
+        .unwrap_or_default()
+}
+
+/// Forgets what Baton saw of one participant in a file. The caller holds the sync lock.
+pub(crate) fn forget_in(state_file: &Path, id: &str) -> io::Result<()> {
+    let Some(mut state) = read_json_as::<State>(state_file) else {
         return Ok(());
     };
     if state.seen.remove(id).is_none() {
@@ -922,7 +1026,23 @@ pub fn forget_account(paths: &Paths, id: &str) -> io::Result<()> {
     for question in &mut state.pending {
         question.values.retain(|held| held.who != id);
     }
-    write_json_atomic(&sync_file(paths), &state)
+    write_json_atomic(state_file, &state)
+}
+
+/// Takes the sync lock for `wait` at most; None while another baton syncs.
+pub(crate) fn sync_lock(paths: &Paths, wait: Duration) -> Option<OsLock> {
+    lock(paths, wait)
+}
+
+/// How long a sync waits for another baton to finish its own.
+pub(crate) const SYNC_WAIT: Duration = LOCK_WAIT;
+
+/// Forgets what Baton saw in a removed account's profile.
+pub fn forget_account(paths: &Paths, id: &str) -> io::Result<()> {
+    let Some(_lock) = lock(paths, LOCK_WAIT) else {
+        return Ok(());
+    };
+    forget_in(&sync_file(paths), id)
 }
 
 #[cfg(test)]
@@ -1018,7 +1138,7 @@ mod tests {
                 "theme": "dark", "userID": "user-a", "oauthAccount": { "emailAddress": "a@example.invalid" },
                 "mcpServers": { "files": { "args": ["-y", "x"], "command": "files" }, "github": { "command": "gh" } },
                 "projects": {
-                    "e:\\work": { "hasTrustDialogAccepted": false, "allowedTools": ["Read", "Bash(git:*)"] },
+                    "E:\\Work": { "hasTrustDialogAccepted": false, "allowedTools": ["Read", "Bash(git:*)"] },
                     "E:/Other": { "hasTrustDialogAccepted": true, "allowedTools": [] }
                 }
             }),
@@ -1060,7 +1180,7 @@ mod tests {
         let a = profile(&paths, "a");
         assert_eq!(a["userID"], "user-a");
         assert_eq!(a["oauthAccount"]["emailAddress"], "a@example.invalid");
-        assert_eq!(a["projects"]["e:\\work"]["hasTrustDialogAccepted"], true);
+        assert_eq!(a["projects"]["E:\\Work"]["hasTrustDialogAccepted"], true);
         assert!(a["projects"].get("E:/Work").is_none());
         // ~/.claude.json is only ever read.
         assert_eq!(
@@ -1313,18 +1433,18 @@ mod tests {
         all(&paths, &config);
         change(&paths, "b", |b| b["theme"] = json!("light"));
         // A sync reads everyone and works out that a takes b's theme...
-        let keys = keys_of(&config);
+        let doc = Doc::claude_json(&paths, &config);
         let mut state: State = read_json_as(&sync_file(&paths)).unwrap();
-        let everyone = parties(&paths, &config, &keys, &mut state);
+        let everyone = parties(&doc, &mut state);
         let mut report = SyncReport::default();
         for party in &everyone {
-            collect(&mut state, party, &mut report);
+            collect(&mut state, party, &mut report, &doc);
         }
         // ...and before it writes a's file, the Claude Code running there saves it.
         change(&paths, "a", |a| a["numStartups"] = json!(7));
         let a = everyone.iter().find(|party| party.id == "a").unwrap();
         let seen = state.seen.get("a").cloned();
-        assert_eq!(apply(&mut state, a, None).unwrap(), None);
+        assert_eq!(apply(&mut state, a, None, &doc, false).unwrap(), None);
         assert_eq!(state.seen.get("a").cloned(), seen);
         assert_eq!(
             profile(&paths, "a"),

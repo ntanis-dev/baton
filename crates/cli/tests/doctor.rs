@@ -79,7 +79,7 @@ fn doctor_reports_claude_links_sign_in_by_method_only_and_the_install() {
 }
 
 #[test]
-fn doctor_does_not_flag_a_fresh_account_for_history_jsonl_whether_or_not_file_links_are_allowed() {
+fn doctor_does_not_flag_a_fresh_account_for_history_jsonl_whether_it_is_a_link_or_a_copy() {
     let home = home_with_claude();
     // The shared base has a prompt history, as soon as Claude Code has run.
     write(&home.paths.claude_dir.join("history.jsonl"), "{}\n");
@@ -90,10 +90,11 @@ fn doctor_does_not_flag_a_fresh_account_for_history_jsonl_whether_or_not_file_li
     let detail = links["detail"].as_str().unwrap();
     assert_eq!(links["ok"], true, "{detail}");
     assert!(!detail.contains("history.jsonl missing"), "{detail}");
-    // Where file links are off, the check says what was left out.
+    // Where file links are off, the history is a copy like the other shared files.
     let file_links = check(&report, "file links").unwrap()["detail"].as_str().unwrap();
     if !file_links.starts_with("allowed") {
-        assert!(detail.contains("history.jsonl not shared"), "{detail}");
+        assert!(detail.contains("1 copied"), "{detail}");
+        assert!(file_links.contains("history.jsonl are copies"), "{file_links}");
     }
 }
 
@@ -114,7 +115,7 @@ fn doctor_says_which_baton_it_is_and_what_is_missing_before_and_after_install() 
     );
     assert_eq!(
         check(&before, "hooks").unwrap()["detail"],
-        "missing SessionStart, UserPromptSubmit, Stop, StopFailure, SessionEnd: baton install"
+        "missing SessionStart, UserPromptSubmit, Stop, StopFailure, SessionEnd, ConfigChange: baton install"
     );
     assert_eq!(
         check(&before, "/hop command").unwrap()["detail"],
@@ -134,6 +135,6 @@ fn doctor_says_which_baton_it_is_and_what_is_missing_before_and_after_install() 
     // The hooks name a baton that is not on this machine: doctor says so.
     assert_eq!(
         check(&after, "hooks").unwrap()["detail"],
-        "paths gone for SessionStart, UserPromptSubmit, Stop, StopFailure, SessionEnd: baton install again"
+        "paths gone for SessionStart, UserPromptSubmit, Stop, StopFailure, SessionEnd, ConfigChange: baton install again"
     );
 }

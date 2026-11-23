@@ -1,6 +1,7 @@
 //! Every profile shares everything but the sign-in with the shared base (~/.claude): directories by
 //! junction (Windows) or symbolic link, files by symbolic link when the OS allows it (on Windows:
-//! Developer Mode), else by a copy that is refreshed at every launch.
+//! Developer Mode), else by a copy that Baton keeps in step with ~/.claude's and the other profiles'
+//! ([`crate::shared`]). A copy becomes a link once links are allowed: it is brought in step first.
 //!
 //! The per-profile global config (.claude.json) is never linked: it holds the signed-in account's
 //! identity, so Baton seeds only the keys that make a profile start like plain claude (onboarding done,
@@ -13,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use baton_core::clock::now_ms;
-use baton_core::config::{Account, Mark, load_config};
+use baton_core::config::{Account, Config, Mark, load_config};
 use baton_core::fsutil::random_hex;
 use baton_core::json::{Get, Object, compact, is_truthy};
 use baton_core::paths::{Paths, global_config_file, profile_dir, resolve, same_path};
@@ -21,7 +22,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::claude_json::{Loaded, load, rewrite};
-use crate::copies::{copy_state, sync_copies};
+use crate::shared::{COPIED, copy_state, sync_shared};
 use crate::sync::{Apply, full_sync, sync_settings};
 
 /// Something of ~/.claude that every profile shares.
@@ -31,26 +32,16 @@ pub struct Shared {
     pub name: &'static str,
     /// Whether it is a folder.
     pub dir: bool,
-    /// Whether it is shared only by a real link, never by a copy.
-    pub link_only: bool,
 }
 
 /// A shared folder.
 const fn dir(name: &'static str) -> Shared {
-    Shared {
-        name,
-        dir: true,
-        link_only: false,
-    }
+    Shared { name, dir: true }
 }
 
 /// A shared file.
 const fn file(name: &'static str) -> Shared {
-    Shared {
-        name,
-        dir: false,
-        link_only: false,
-    }
+    Shared { name, dir: false }
 }
 
 /// What every profile shares: what every conversation needs, then what Claude Code 2.1.302 keeps per
@@ -71,13 +62,8 @@ pub const SHARED: [Shared; 15] = [
     dir("todos"),
     dir("rules"),
     dir("output-styles"),
-    // The prompt history is appended by every running process: shared only by a real link, never by a
-    // copy.
-    Shared {
-        name: "history.jsonl",
-        dir: false,
-        link_only: true,
-    },
+    // The prompt history: one file where links are allowed, else every profile's lines together.
+    file("history.jsonl"),
 ];
 
 /// Never shared, never linked: credentials, per-process and per-install state and secrets (sessions/
@@ -295,8 +281,8 @@ fn same_bytes(a: &Path, b: &Path) -> bool {
 pub struct LinkEntry {
     /// The item: a shared folder or file, or `.claude.json`.
     pub name: String,
-    /// `linked`, `ok`, `copied`, `refreshed`, `relinked`, `copied-back`, `seeded`, `synced`, `adopted`,
-    /// `no-source`, `conflict`, `skipped` or `removed-unsafe-link`.
+    /// `linked`, `ok`, `copied`, `refreshed`, `relinked`, `seeded`, `synced`, `adopted`, `no-source`,
+    /// `conflict`, `skipped` or `removed-unsafe-link`.
     pub action: &'static str,
     /// More about it, when there is more to say.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -326,8 +312,6 @@ fn done_with(name: &str, action: &'static str, detail: impl Into<String>) -> Lin
 pub struct LinkOptions {
     /// Whether files are shared by symbolic links; None asks the system ([`can_symlink_files`]).
     pub file_links: Option<bool>,
-    /// The other profiles to bring in line when files are copies, in priority order.
-    pub peers: Vec<String>,
     /// Whether the accounts' settings are kept in step ([`crate::sync`]); None asks the policy
     /// (`fullSync`, on unless the operator turned it off).
     pub full_sync: Option<bool>,
@@ -354,7 +338,15 @@ pub fn link_profile(paths: &Paths, name: &str, options: &LinkOptions) -> io::Res
         .full_sync
         .unwrap_or_else(|| full_sync(&load_config(paths)));
     let mut report = Vec::new();
-    let mut copies = false;
+    let mut copies: Vec<(&'static str, bool)> = Vec::new();
+    let config = config_with(paths, name);
+    // A copy from when links were not allowed becomes a link: what was changed in it goes to
+    // ~/.claude's first, so that nothing of it is lost when the copy goes.
+    let own_copy =
+        |item: &Shared| !item.dir && lstat(&profile.join(item.name)).is_some_and(|meta| meta.is_file());
+    if files && SHARED.iter().any(own_copy) {
+        sync_shared(paths, &config, Apply::One(name), now_ms(), Some(true))?;
+    }
     for item in SHARED {
         let src = paths.claude_dir.join(item.name);
         let dst = profile.join(item.name);
@@ -417,38 +409,43 @@ pub fn link_profile(paths: &Paths, name: &str, options: &LinkOptions) -> io::Res
         }
         if files {
             if dst_stat.is_some() && !is_link {
-                if !same_bytes(&src, &dst) {
+                if !same_bytes(&src, &dst) && copy_state(paths, name, item.name) != "copy-fresh" {
                     report.push(done_with(
                         item.name,
                         "conflict",
-                        "a file of its own exists in the profile",
+                        "the profile's own differs from ~/.claude's and waits for an answer: baton sync",
                     ));
                     continue;
                 }
                 fs::remove_file(&dst)?;
             }
-            link_file(&src, &dst)?;
-            report.push(done(item.name, action));
-            continue;
-        }
-        if item.link_only {
-            report.push(done_with(item.name, "skipped", "file links are not allowed here"));
-            continue;
-        }
-        // A copy: synchronised both ways below, for every profile at once.
-        copies = true;
-    }
-    if copies {
-        let mut names = vec![name.to_owned()];
-        names.extend(options.peers.iter().cloned());
-        for entry in sync_copies(paths, &names, now_ms())? {
-            if entry.account == name && entry.action != "no-source" {
-                report.push(LinkEntry {
-                    name: entry.name,
-                    action: entry.action,
-                    detail: entry.detail.filter(|detail| !detail.is_empty()),
-                });
+            // A system that says it allows file links and then refuses this one: a copy instead.
+            if link_file(&src, &dst).is_ok() {
+                report.push(done(item.name, action));
+                continue;
             }
+        }
+        // A copy: kept in step below, with ~/.claude's and the other profiles'.
+        copies.push((item.name, dst_stat.is_some()));
+    }
+    // What ~/.claude does not have but a profile holds a copy of is shared too.
+    for item in SHARED.iter().filter(|item| !item.dir && !files) {
+        if !copies.iter().any(|(name, _)| *name == item.name) && COPIED.contains(&item.name) {
+            copies.push((item.name, lstat(&profile.join(item.name)).is_some()));
+            report.retain(|entry| !(entry.name == item.name && entry.action == "no-source"));
+        }
+    }
+    if !copies.is_empty() {
+        let shared = sync_shared(paths, &config, Apply::One(name), now_ms(), Some(false))?;
+        for (item, existed) in copies {
+            report.push(copy_entry(
+                paths,
+                name,
+                item,
+                existed,
+                shared.busy,
+                shared.of(item),
+            ));
         }
     }
     // Defensive: nothing of the NEVER list may be a link into ~/.claude.
@@ -478,7 +475,7 @@ fn share_first(item: &Shared, src: &Path, dst: &Path) -> io::Result<()> {
         return fs::create_dir_all(src);
     }
     let own = lstat(dst).is_some_and(|meta| meta.is_file());
-    if own && !item.link_only {
+    if own {
         if let Some(parent) = src.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -505,12 +502,10 @@ fn adopt_folder(src: &Path, dst: &Path) -> io::Result<bool> {
     Ok(true)
 }
 
-/// Brings the profile's `.claude.json` in step with the other accounts' ([`crate::sync`]) and
-/// says what came of it.
-fn sync_entry(paths: &Paths, name: &str) -> io::Result<LinkEntry> {
-    const NAME: &str = ".claude.json";
+/// The config with the account `name` in it: an account that is being added is linked before it is
+/// saved.
+fn config_with(paths: &Paths, name: &str) -> Config {
     let mut config = load_config(paths);
-    // An account that is being added is linked before it is saved.
     if !config.accounts.iter().any(|account| account.id == name) {
         config.accounts.push(Account {
             id: name.to_owned(),
@@ -520,6 +515,52 @@ fn sync_entry(paths: &Paths, name: &str) -> io::Result<LinkEntry> {
             weekly: None,
         });
     }
+    config
+}
+
+/// What keeping a profile's copy of a shared file in step came to. `existed` says whether the profile
+/// had the file before; `synced` is the file's part of the sync (None: nobody holds a copy of it).
+fn copy_entry(
+    paths: &Paths,
+    name: &str,
+    item: &str,
+    existed: bool,
+    busy: bool,
+    synced: Option<&crate::sync::SyncReport>,
+) -> LinkEntry {
+    if busy {
+        return done_with(item, "skipped", "another baton is syncing the shared files");
+    }
+    let there = lstat(&profile_dir(paths, name).join(item)).is_some();
+    let Some(synced) = synced else {
+        return done(item, if there { "ok" } else { "no-source" });
+    };
+    if synced.unreadable.iter().any(|id| id == name) {
+        return done_with(item, "skipped", "the profile's own cannot be read; left as it is");
+    }
+    if !synced.questions.is_empty() {
+        return done_with(
+            item,
+            "conflict",
+            "the accounts changed it in different ways: baton sync asks which stays",
+        );
+    }
+    match synced.written.iter().find(|written| written.account == name) {
+        Some(_) if !existed => done(item, "copied"),
+        Some(written) if item.ends_with(".json") => {
+            done_with(item, "synced", format!("{} settings", written.settings))
+        }
+        Some(_) => done(item, "synced"),
+        None if there => done_with(item, "ok", "copy"),
+        None => done(item, "no-source"),
+    }
+}
+
+/// Brings the profile's `.claude.json` in step with the other accounts' ([`crate::sync`]) and
+/// says what came of it.
+fn sync_entry(paths: &Paths, name: &str) -> io::Result<LinkEntry> {
+    const NAME: &str = ".claude.json";
+    let config = config_with(paths, name);
     let synced = sync_settings(paths, &config, Apply::One(name), now_ms())?;
     if synced.busy {
         return Ok(done_with(
@@ -548,22 +589,20 @@ fn sync_entry(paths: &Paths, name: &str) -> io::Result<LinkEntry> {
 pub struct Inspected {
     /// The item.
     pub name: String,
-    /// `linked`, `wrong-link`, `missing`, `not-shared`, `no-source`, `conflict`, `own`, `unsafe-link`,
-    /// or a copy's state: `copy-fresh`, `copy-changed`, `copy-stale`.
+    /// `linked`, `wrong-link`, `missing`, `no-source`, `conflict`, `unsafe-link`, or a copy's state:
+    /// `copy-fresh`, `copy-changed`.
     pub status: &'static str,
     /// Where a link points.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
 
-/// The status of one profile's links, without changing anything. A file that only a real link may
-/// share (history.jsonl) is "not-shared", not "missing", where file links are not allowed: there it is
-/// left out on purpose and nothing launching Baton could change that. `file_links` says whether file
-/// links are allowed; None asks the system when it matters.
+/// The status of one profile's links, without changing anything. `file_links` says whether file links
+/// are allowed (nothing here depends on it any more: a file is shared by a link or by a copy).
 pub fn inspect_profile(paths: &Paths, name: &str, file_links: Option<bool>) -> Vec<Inspected> {
     let profile = profile_dir(paths, name);
     let mut out = Vec::new();
-    let mut can_link = file_links;
+    let _ = file_links;
     let mut status = |name: &str, status: &'static str, detail: Option<String>| {
         out.push(Inspected {
             name: name.to_owned(),
@@ -579,8 +618,7 @@ pub fn inspect_profile(paths: &Paths, name: &str, file_links: Option<bool>) -> V
             continue;
         }
         let Some(dst_stat) = lstat(&dst) else {
-            let shared = !item.link_only || *can_link.get_or_insert_with(|| can_symlink_files(&paths.tmp));
-            status(item.name, if shared { "missing" } else { "not-shared" }, None);
+            status(item.name, "missing", None);
             continue;
         };
         if dst_stat.file_type().is_symlink() {
@@ -595,8 +633,6 @@ pub fn inspect_profile(paths: &Paths, name: &str, file_links: Option<bool>) -> V
         }
         if item.dir {
             status(item.name, "conflict", None);
-        } else if item.link_only {
-            status(item.name, "own", None);
         } else {
             status(item.name, copy_state(paths, name, item.name), None);
         }
@@ -609,9 +645,20 @@ pub fn inspect_profile(paths: &Paths, name: &str, file_links: Option<bool>) -> V
     out
 }
 
-/// A folder as .claude.json keys it, for comparing: forward slashes, no trailing one, lower case.
+/// Whether two folder names that differ only in case are one folder here: so it is on the file
+/// systems Windows and macOS come with, and not on Linux's.
+const CASE_FOLDS: bool = cfg!(any(windows, target_os = "macos"));
+
+/// A folder as .claude.json keys it, for comparing: forward slashes, no trailing one, and in lower
+/// case where case does not tell two folders apart.
 pub(crate) fn normalize_project_key(key: &str) -> String {
-    key.replace('\\', "/").trim_end_matches('/').to_lowercase()
+    let plain = key.replace('\\', "/");
+    let plain = plain.trim_end_matches('/');
+    if CASE_FOLDS {
+        plain.to_lowercase()
+    } else {
+        plain.to_owned()
+    }
 }
 
 /// One seeded project key, the profile's value and the incoming one merged: what either side granted
@@ -815,10 +862,16 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn project_keys_compare_whatever_the_slashes_and_the_case() {
-        assert_eq!(normalize_project_key("E:\\Work\\"), "e:/work");
+    fn project_keys_compare_whatever_the_slashes_and_the_case_where_case_is_one() {
         assert_eq!(normalize_project_key("e:/work///"), "e:/work");
-        assert_eq!(normalize_project_key("/home/Op/x"), "/home/op/x");
+        assert_eq!(normalize_project_key("e:\\work\\"), "e:/work");
+        // Where `Work` and `work` are one folder they are one key; on Linux they are two folders.
+        let same = normalize_project_key("/home/Op/x") == normalize_project_key("/home/op/x");
+        assert_eq!(same, CASE_FOLDS);
+        assert_eq!(
+            normalize_project_key("E:\\Work\\"),
+            if CASE_FOLDS { "e:/work" } else { "E:/Work" }
+        );
     }
 
     #[test]

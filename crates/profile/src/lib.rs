@@ -4,6 +4,7 @@
 
 pub mod accounts;
 pub mod claude_json;
-pub mod copies;
+pub mod merge3;
 pub mod profile;
+pub mod shared;
 pub mod sync;

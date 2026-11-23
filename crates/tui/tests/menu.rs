@@ -838,21 +838,6 @@ fn the_data_is_everything_the_menu_shows_read_in_one_go() {
         (Some("countdown"), Some("acct2"), Some("rate_limit"))
     );
     assert_eq!(data.stats.days.len(), 7);
-    // Shared files that changed in two places at once are counted.
-    assert_eq!(data.conflicts, 0);
-    baton_testkit::write_json(
-        &paths.root.join("conflicts.json"),
-        &json!({ "conflicts": [
-            { "account": "acct2", "item": "settings.json", "kept": "~/.claude" },
-            { "account": "acct3", "item": "CLAUDE.md", "kept": "~/.claude" }
-        ] }),
-    );
-    assert_eq!(load_menu_data(paths, now()).conflicts, 2);
-    let drawn = frame(&menu_state(paths, &[])).join("\n");
-    assert!(
-        drawn.contains("2 shared-file conflicts · baton conflicts"),
-        "{drawn}"
-    );
     // Every account blocked: nothing to start on, and the one that is back first.
     let blocked = home_blocked();
     let data = load_menu_data(&blocked.paths, now());

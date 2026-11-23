@@ -62,7 +62,6 @@ baton view                          # or open the menu
 | `baton account ...`        | `list`, `add`, `rename`, `remove`, `order`, `move`, `set` (marks and thresholds)          |
 | `baton sync`               | Brings every account's setup in step now, and lists what the accounts differ on           |
 | `baton doctor`             | Checks Claude Code, every profile, the install, the Ferry registration and Ferry's agent  |
-| `baton conflicts`          | Shared files changed in two places at once, with the backups kept                         |
 
 `baton help <command>` shows a command's options, and `--json` prints data instead of the screen where that makes
 sense. To start with a prompt, put `start` first: `baton start "fix the tests"`. `baton` stays out of the way: Ctrl+C,
@@ -185,9 +184,10 @@ Set `NO_COLOR` to drop the colors, `BATON_GLYPHS=plain` for the classic Windows 
   If you keep your own status line, Baton shows nothing of its own there. To add Baton's usage after yours, on the same
   line and only as far as the terminal is wide, run `baton policy --status-line-usage true` (or turn on Bar usage in
   the menu's Policy view). `false` turns it off again.
-- **Hooks** for `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`. They run in a fraction of a
-  second, never block, and never fail a session. Your own hooks stay.
-- **The `/hop` command** (skipped if you have your own `hop.md`).
+- **Hooks** for `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure`, `SessionEnd` and `ConfigChange`. They run
+  in a fraction of a second, never block, and never fail a session. Your own hooks stay.
+- **The `/hop` command** (skipped if you have your own `hop.md`). It may run `baton hop` and nothing else. A name
+  with an apostrophe cannot pass through the shell it runs in: type it without (`/hop Janes account`), or use the id.
 
 When [Ferry](#ferry) is installed, it also registers Baton there. The previous files are copied to
 `~/.baton/backups/<time>/`. `baton uninstall` removes exactly Baton's entries, its Ferry launcher included, and
@@ -232,11 +232,18 @@ account runs them:
 
 - Folders such as `projects/` (transcripts, memory), `skills/`, `agents/`, `commands/`, `plugins/`, `plans/`, `tasks/`
   and `rules/` are junctions (Windows) or symbolic links.
-- `settings.json`, `CLAUDE.md` and `keybindings.json` are symbolic links where the OS allows it (on Windows, with
-  Developer Mode, which also shares `history.jsonl`). Otherwise they are two-way copies: a change made in a profile
-  (say `/config` under one account) is copied back to `~/.claude`, after a timestamped backup, and on to the other
-  profiles. If the same file changed in two places, `~/.claude`'s wins, the other is backed up, and `baton conflicts`
-  shows it.
+- `settings.json`, `CLAUDE.md`, `keybindings.json` and `history.jsonl` are symbolic links where the OS allows it (on
+  Windows, with Developer Mode). Otherwise every profile holds a copy, and Baton keeps the copies and `~/.claude`'s own
+  in step whenever an account is used, with full sync on or off:
+  - **Settings and key bindings, setting by setting.** `/config` or `/permissions` under one account changes that
+    profile's copy; the change goes to `~/.claude`'s file and to the other accounts, and what they changed meanwhile
+    stays. With the `ConfigChange` hook it arrives within seconds, in their running sessions too.
+  - **`CLAUDE.md`, line by line.** What each account changed is in the merged text.
+  - **The prompt history** is every account's prompts together, each once, in the order you typed them.
+  - Two accounts that changed the same setting, or the same lines, in different ways are a question, like any other
+    the accounts differ on: nobody's version is written over until you answer (`baton sync`).
+  - What `~/.claude`'s file held before a sync changed it is kept in `~/.baton/backups/<time>/`.
+  - A copy becomes a link once links are allowed: what was changed in it goes to `~/.claude`'s first.
 - The profile's `.claude.json` is its own, because it holds that account's identity. With full sync on, what you set
   in it (preferences, MCP servers, each folder's trust and approvals, the notices you already answered) is kept in step
   between the accounts whenever a profile is used; never identity. With it off, Baton seeds it from `~/.claude.json` at
@@ -287,9 +294,9 @@ renamed or signed in, and when you ask (`r` in the menu, or `baton usage --refre
 ~/.baton/rejected/                refusals per account and window
 ~/.baton/sessions/<id>/           per-conversation state from the hooks and status line
 ~/.baton/history/                 append-only readings and events (moves, refusals, sessions)
-~/.baton/install.json, backups/   what baton install did, and backups of two-way copies
-~/.baton/copies.json, conflicts.json   what was last copied into each profile, and copy conflicts
-~/.baton/sync.json                what the accounts agree on, what Baton last saw in each, open questions
+~/.baton/install.json, backups/   what baton install did, and what a sync or an install replaced
+~/.baton/sync.json                what the accounts agree on in .claude.json, what Baton last saw in each, open questions
+~/.baton/shared/                  the same for the shared files the profiles hold copies of
 ```
 
 What you write into `config.json` yourself stays: a key Baton does not know is kept as it is. A file that cannot be

@@ -137,6 +137,72 @@ fn a_config_that_cannot_be_read_is_said_by_the_hooks_and_the_status_line_and_fai
 }
 
 #[test]
+fn a_settings_change_under_one_account_reaches_the_others_as_soon_as_claude_code_says_so() {
+    let home = four_accounts_home();
+    let paths = &home.paths;
+    let settings = |who: &str| {
+        if who == "home" {
+            paths.claude_dir.join("settings.json")
+        } else {
+            profile_dir(paths, who).join("settings.json")
+        }
+    };
+    let theme = |who: &str| baton_core::fsutil::read_json(&settings(who)).unwrap()["theme"].clone();
+    // Every profile holds a copy of the settings, as where file links are not allowed.
+    for who in ["home", "acct1", "acct2", "acct3"] {
+        let _ = std::fs::remove_file(settings(who));
+        write_json(&settings(who), &json!({ "model": "opus", "theme": "dark" }));
+    }
+    let changed = |source: &str| {
+        json!({
+            "session_id": SID, "hook_event_name": "ConfigChange", "source": source,
+            "file_path": settings("acct2").to_string_lossy()
+        })
+        .to_string()
+    };
+    // Baton has seen them in step (as it does whenever an account is used).
+    spawn(
+        &env2(&home),
+        &["hook", "config-change"],
+        &changed("user_settings"),
+    );
+    // /config under acct2 saves that profile's settings.json, and Claude Code runs the hook.
+    write_json(&settings("acct2"), &json!({ "model": "opus", "theme": "light" }));
+    let hook = spawn(
+        &env2(&home),
+        &["hook", "config-change"],
+        &changed("user_settings"),
+    );
+    // It says nothing: a word from it could stand in the way of the change.
+    assert_eq!(
+        (hook.code, hook.stdout.as_str(), hook.stderr.as_str()),
+        (0, "", "")
+    );
+    for who in ["home", "acct1", "acct3"] {
+        assert_eq!(theme(who), "light", "{who}");
+    }
+    // A project's settings are not shared between accounts, and plain claude is not Baton's.
+    write_json(&settings("acct2"), &json!({ "model": "opus", "theme": "blue" }));
+    spawn(
+        &env2(&home),
+        &["hook", "config-change"],
+        &changed("project_settings"),
+    );
+    spawn(
+        &test_env(&home.home),
+        &["hook", "config-change"],
+        &changed("user_settings"),
+    );
+    assert_eq!(theme("acct3"), "light");
+    spawn(
+        &env2(&home),
+        &["hook", "config-change"],
+        &changed("user_settings"),
+    );
+    assert_eq!(theme("acct3"), "blue");
+}
+
+#[test]
 fn hooks_are_fast_as_a_process() {
     let home = four_accounts_home();
     let env = env2(&home);

@@ -16,8 +16,7 @@ use baton_core::state::{PollSnapshot, Snapshot, Want, load_snapshot};
 use baton_core::stats::{HopView, Stats, compute_stats};
 use baton_core::usage::{Others, Reading, Rise, read_rises};
 use baton_core::window::PerWindow;
-use baton_profile::copies::read_conflicts;
-use baton_profile::sync::read_questions;
+use baton_profile::shared::every_question;
 use serde_json::Value;
 
 /// How many recent sessions the menu lists.
@@ -108,9 +107,7 @@ pub struct MenuData {
     pub sessions: Vec<SessionInfo>,
     /// The last 7 days.
     pub stats: Stats,
-    /// How many shared files changed in two places at once.
-    pub conflicts: usize,
-    /// How many settings the accounts differ on and only the operator can settle (full sync).
+    /// How many settings the accounts differ on and only the operator can settle.
     pub differ: usize,
 }
 
@@ -266,12 +263,7 @@ pub fn load_menu_data(paths: &Paths, now: Ms) -> MenuData {
     MenuData {
         now,
         next,
-        conflicts: read_conflicts(paths).len(),
-        differ: if snapshot.policy.full_sync {
-            read_questions(paths).len()
-        } else {
-            0
-        },
+        differ: every_question(paths, &snapshot.config).len(),
         config: snapshot.config,
         policy: snapshot.policy,
         states: snapshot.states,

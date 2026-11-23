@@ -68,13 +68,19 @@ pub fn claude_pid(env: &Env) -> Option<i64> {
 }
 
 /// The hooks Baton installs: the name `baton hook` takes, and Claude Code's event.
-pub const HOOK_EVENTS: [(&str, &str); 5] = [
+pub const HOOK_EVENTS: [(&str, &str); 6] = [
     ("session-start", "SessionStart"),
     ("prompt", "UserPromptSubmit"),
     ("stop", "Stop"),
     ("stop-failure", "StopFailure"),
     ("session-end", "SessionEnd"),
+    // A settings file changed during a session: where the profiles hold copies of it, the command
+    // line brings the others in step ([`CONFIG_CHANGE`]). Nothing is recorded for it.
+    (CONFIG_CHANGE, "ConfigChange"),
 ];
+
+/// The hook that says a settings file changed during a session.
+pub const CONFIG_CHANGE: &str = "config-change";
 
 /// Claude Code's event for a name `baton hook` takes.
 pub fn hook_event(name: &str) -> Option<&'static str> {
@@ -930,7 +936,7 @@ mod tests {
         assert_eq!(hook_event("stop-failure"), Some("StopFailure"));
         assert_eq!(hook_event("prompt"), Some("UserPromptSubmit"));
         assert_eq!(hook_event("Stop"), None);
-        assert_eq!(HOOK_EVENTS.len(), 5);
+        assert_eq!(HOOK_EVENTS.len(), 6);
     }
 
     #[test]

@@ -31,9 +31,8 @@ fn watched(paths: &Paths, state: &State, now: Ms) -> Vec<PathBuf> {
     let mut list = vec![
         paths.config.clone(),
         paths.install.clone(),
-        paths.root.join("conflicts.json"),
-        paths.root.join("copies.json"),
         paths.root.join("sync.json"),
+        paths.root.join("shared"),
         poll_file(paths),
         lease_file(paths),
         poll_dir(paths),

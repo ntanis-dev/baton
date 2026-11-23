@@ -18,17 +18,17 @@ use baton_core::poll::request_poll;
 use baton_core::state::{Want, load_snapshot};
 use baton_core::stats::compute_stats;
 use baton_install::hooks::{
-    StatusLine, append_usage, columns_of, config_notice, handle_hook, handle_status_line,
-    run_previous_status_line,
+    CONFIG_CHANGE, StatusLine, append_usage, baton_account, columns_of, config_notice, handle_hook,
+    handle_status_line, run_previous_status_line,
 };
 use baton_install::install::{apply_plan, plan_install, plan_uninstall};
 use baton_profile::accounts::{
     AccountChanges, AccountError, AddOptions, account_json, add_account, move_account, order_accounts,
     remove_account, rename_account, set_account, set_policy,
 };
-use baton_profile::copies::{clear_conflicts, read_conflicts};
 use baton_profile::profile::{LinkOptions, link_profile};
-use baton_profile::sync::{Apply, HOME, full_sync, sync_settings, take};
+use baton_profile::shared::{sync_everything, sync_shared, take_everything};
+use baton_profile::sync::{Apply, HOME, full_sync};
 use baton_tui::data::load_menu_data;
 use baton_tui::{MenuOptions, SignInOptions, run_menu, sign_in};
 use serde_json::{Value, json};
@@ -155,11 +155,26 @@ fn run_hook(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
     let (env, paths, now) = (&ctx.io.env, &ctx.paths, (ctx.io.now)());
     // A hook never fails the session.
     let _ = catch_unwind(AssertUnwindSafe(|| handle_hook(event, &input, env, paths, now)));
+    if event == CONFIG_CHANGE {
+        let _ = catch_unwind(AssertUnwindSafe(|| settings_changed(&input, env, paths, now)));
+    }
     // A config that cannot be used makes this profile nobody's account: say so where it can be read.
     if let Some(notice) = config_notice(env, paths) {
         let _ = writeln!(ctx.io.stderr, "{notice}");
     }
     Ok(Outcome::quiet(0))
+}
+
+/// The operator's own settings changed during a session under one of Baton's profiles (`/config`,
+/// `/permissions`, an editor): where the profiles hold copies of the shared files, what changed goes
+/// to `~/.claude`'s and to the other accounts now, and Claude Code reloads it in their sessions. Where
+/// the files are links there is nothing to do. Says nothing, so that it never stands in the way of
+/// the change.
+fn settings_changed(input: &Value, env: &baton_core::env::Env, paths: &Paths, now: baton_core::clock::Ms) {
+    if input.text("source") != Some("user_settings") || baton_account(env, paths).is_none() {
+        return;
+    }
+    let _ = sync_shared(paths, &load_config(paths), Apply::All, now, None);
 }
 
 /// `baton statusline`: record rate_limits and print the status line.
@@ -400,10 +415,11 @@ fn run_account(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
     }
 }
 
-/// The name of someone who takes part in the sync: an account's, or `~/.claude.json`.
+/// The name of someone who takes part in the sync: an account's, or `home` for what is the operator's
+/// own outside every profile (`~/.claude.json`, and `~/.claude`'s files).
 fn party_name(config: &Config, who: &str) -> String {
     if who == HOME {
-        "~/.claude.json".to_owned()
+        "home".to_owned()
     } else {
         name_of(config, who)
     }
@@ -415,26 +431,9 @@ fn run_sync(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
     let now = (ctx.io.now)();
     let config = load_config(&paths);
     let failed = |error: std::io::Error| CliError::Failed(error.to_string());
-    if !full_sync(&config) {
-        return Ok(Outcome::shown(
-            json!({ "on": false }),
-            Box::new(move |term| {
-                let name = |who: &str| party_name(&config, who);
-                screens::sync_screen(
-                    term,
-                    &SyncView {
-                        on: false,
-                        report: None,
-                        took: None,
-                        name: &name,
-                    },
-                )
-            }),
-        ));
-    }
     let mut took: Option<(usize, String)> = None;
     let report = match ctx.values.positional(0) {
-        None => sync_settings(&paths, &config, Apply::All, now).map_err(failed)?,
+        None => sync_everything(&paths, &config, Apply::All, now).map_err(failed)?,
         Some("take") => {
             let (Some(which), Some(whose)) = (ctx.values.positional(1), ctx.values.positional(2)) else {
                 return Err(usage("baton sync take <number|all> <account|home>"));
@@ -447,7 +446,7 @@ fn run_sync(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
                 },
             };
             // What changed since Baton last looked may be a question by now, or no longer one.
-            let open = sync_settings(&paths, &config, Apply::Nothing, now)
+            let open = sync_everything(&paths, &config, Apply::Nothing, now)
                 .map_err(failed)?
                 .questions;
             let leaves: Vec<String> = if which == "all" {
@@ -466,14 +465,36 @@ fn run_sync(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
                 }
             };
             took = Some((leaves.len(), party_name(&config, &who)));
-            take(&paths, &config, &leaves, &who, now).map_err(|error| usage(format!("{error}.")))?
+            take_everything(&paths, &config, &leaves, &who, now)
+                .map_err(|error| usage(format!("{error}.")))?
         }
         Some(other) => return Err(usage(format!("Unknown: baton sync {other}"))),
     };
     let mut out = data(&report)
         .and_then(|value| value.as_object().cloned())
         .unwrap_or_default();
-    out.insert("on".to_owned(), json!(true));
+    // With full sync off, the files every profile shares are still kept in step where profiles hold
+    // copies of them. When that had nothing to do either, what there is to say is that it is off.
+    let on = full_sync(&config);
+    let quiet = report.written.is_empty() && report.questions.is_empty() && !report.busy && took.is_none();
+    if !on && quiet {
+        return Ok(Outcome::shown(
+            json!({ "on": false }),
+            Box::new(move |term| {
+                let name = |who: &str| party_name(&config, who);
+                screens::sync_screen(
+                    term,
+                    &SyncView {
+                        on: false,
+                        report: None,
+                        took: None,
+                        name: &name,
+                    },
+                )
+            }),
+        ));
+    }
+    out.insert("on".to_owned(), json!(on));
     let code = if report.busy { 1 } else { 0 };
     Ok(Outcome::shown(
         Value::Object(out),
@@ -844,28 +865,6 @@ fn run_doctor_command(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
     .code(code))
 }
 
-/// `baton conflicts`: shared files changed in two places at once.
-fn run_conflicts(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
-    let list = read_conflicts(&ctx.paths);
-    let config = load_config(&ctx.paths);
-    let label = move |id: &str| name_of(&config, id);
-    if ctx.values.flag("clear") {
-        clear_conflicts(&ctx.paths).map_err(|error| CliError::Failed(error.to_string()))?;
-        let cleared = list.len();
-        return Ok(Outcome::shown(
-            json!({ "cleared": cleared }),
-            Box::new(move |term| screens::conflicts_screen(term, &list, &label, Some(cleared))),
-        ));
-    }
-    Ok(Outcome {
-        data: data(&list),
-        screen: Some(Box::new(move |term| {
-            screens::conflicts_screen(term, &list, &label, None)
-        })),
-        ..Outcome::default()
-    })
-}
-
 /// `baton version`.
 fn run_version(_ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
     let version = env!("CARGO_PKG_VERSION");
@@ -1070,16 +1069,6 @@ pub fn commands() -> Vec<Command> {
             "Check Claude Code, every profile's links and sign-in, the installed status line and hooks, the Ferry registration and the agent Ferry opens.",
             run_doctor_command,
         ),
-        Command {
-            options: vec![Spec::flag("clear")],
-            ..command(
-                "conflicts",
-                "setup",
-                &["baton conflicts [--clear] [--json]"],
-                "Shared files changed both in a profile and in ~/.claude (without file links), with the backups kept.",
-                run_conflicts,
-            )
-        },
         command(
             "version",
             "setup",

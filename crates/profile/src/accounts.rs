@@ -22,8 +22,8 @@ use serde::{Serialize, Serializer};
 use serde_json::{Value, json};
 use thiserror::Error;
 
-use crate::copies::forget_copies;
 use crate::profile::{LinkEntry, LinkOptions, link_profile, unlink_profile};
+use crate::shared::forget_shared;
 use crate::sync::forget_account;
 
 /// Why an account operation did not happen.
@@ -279,7 +279,7 @@ pub fn remove_account(paths: &Paths, key: &str, by: By) -> Result<Removed, Accou
     }
     let account = config.accounts.remove(at);
     let unlinked = unlink_profile(paths, &account.id)?;
-    forget_copies(paths, &account.id)?;
+    forget_shared(paths, &account.id)?;
     forget_account(paths, &account.id)?;
     save_config(paths, &config)?;
     Ok(Removed {

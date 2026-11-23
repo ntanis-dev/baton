@@ -71,12 +71,13 @@ fn handlers(settings: &Value, event: &str) -> Vec<Value> {
         .collect()
 }
 
-const EVENTS: [&str; 5] = [
+const EVENTS: [&str; 6] = [
     "SessionStart",
     "UserPromptSubmit",
     "Stop",
     "StopFailure",
     "SessionEnd",
+    "ConfigChange",
 ];
 
 #[test]

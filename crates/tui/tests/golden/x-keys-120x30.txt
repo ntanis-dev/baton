@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Overview
+      / __ )/   |/_  __/ __ \/ | / /         │   Usage updates every 30m  ·  next 10:18
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   1 ready   /   4 accounts   /   2 live sessions
+   /_____/_/  |_/_/  \___╭─ Keys ─────────────────────────────────────────────────────────────╮
+                         │                                                                    │──────────────────────
+   Keep the conversation │ ↑ ↓        Move through the list, or the fields of a form          │
+   Your Claude accounts. │ ⏎          The selection's actions; edit the policy; take a dialog │
+   One continuous convers│ ← →        Fold and unfold the sessions; change a setting          │
+                         │ 0-9        Type a number into a setting (Backspace takes one back) │──────────────────────
+   / Search              │ PgUp PgDn  Scroll the view; a number setting by ten steps          │ly    Status
+                         │ Home End   The first and the last                                  │ 71%  Back in 40m
+ ›   Overview            │ /          Filter the list by name                                 │ 63%  Ready
+                         │ r          Ask the usage now: the account's, else every account's  │ 97%  Back in 2d
+   Accounts              │ d          A setting back to its default                           │ 18%  Sign in
+   · acct1               │ Esc        Leave a dialog, a form or the filter                    │
+   ★ acct2               │ Ctrl+L     Draw the screen again                                   │──────────────────────
+   · acct3               │ ?          These keys                                              │                 acct2
+   ▿ acct4               │ q          Quit (Ctrl+C from anywhere)                             │
+                         │                                                                    │                 acct1
+   Sessions              │  Close  Esc                                                        │
+   ⠋ sports-odds         ╰────────────────────────────────────────────────────────────────────╯
+   ◆ pelican                          acct1  │   TODAY  ─────────────────────────────────────────────────────────────
+   + 2 recent                                │   1 handoff  ·  2 refusals
+                                             │
+   + Add account                             │
+   ↓ more below                              │    ★ Preferred   ▿ Last resort   · Normal   ⊘ Blocked
+  ↑↓ Scroll    Esc Close

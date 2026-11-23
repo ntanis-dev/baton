@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   acct3
+      / __ )/   |/_  __/ __ \/ | / /         │   ⊘ blocked
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   · #3 of 4 · normal · signed in (claude.ai)
+   /_____/_/  |_/_/  \____/_/ |_/            │   Thresholds  5-hour 90% · weekly 95%  (policy
+                                             │               defaults)
+   Keep the conversation moving.             │
+   Your Claude accounts.                     │   5-hour  ━━━━──────────────────────────┃───   12%
+   One continuous conversation.              │   weekly  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┃━─   97%
+                                             │   Read        5-hour from session 2m ago · weekly
+   / Search                                  │               polled 42m ago
+                                             │   Usage poll  usage endpoint rate limited (12m
+     Overview                                │               ago); asks again 10:03 (in 3m)
+                                             │   ⊘ Blocked by the weekly limit until Tue 10:00
+   Accounts                               4  │     (in 2d)
+   · acct1                            ⊘ 40m  │   Weekly      weekly limit reached; resets in 2d
+   ★ acct2                    5h 42 · wk 63  │
+ › · acct3                             ⊘ 2d  │   7 days      Mon Tue Wed Thu Fri Sat Sun
+   ▿ acct4                          sign in  │     5h peak   ▇▇▇ ███ ███ ▇▇▇ ▇▇▇ ▆▆▆ ▂▂▂
+                                             │     weekly    ▅▅▅ ▆▆▆ ▇▇▇ ▂▂▂ ▃▃▃ ▆▆▆ ███
+   Sessions                               2  │   Hops        0 in · 2 out · 1 refusal
+   ⠋ sports-odds                      acct2  │   Sessions    none running
+   ◆ pelican                          acct1  │
+   + 2 recent                                │
+                                             │
+   + Add account                             │
+   ↓ more below                              │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    r Refresh    ? Keys    q Quit

@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   日本語アカウント
+      / __ )/   |/_  __/ __ \/ | / /         │   available
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   ★ #2 of 4 · preferred · signed in (claude.ai)
+   /_____/_/  |_/_/  \____/_/ |_/            │     ╺━╸ next work goes here
+                                             │   Thresholds  5-hour 90% · weekly 95%  (policy defaults)
+   Keep the conversation moving.             │
+   Your Claude accounts.                     │   5-hour  ━━━━━━━━━━━────────────┃───   42%  resets 12:05 (2h 5m)
+   One continuous convers╭─ Account mark ─────────────────────────────────────────────────────╮ets Thu 10:00 (4d)
+                         │                                                                    │ets Thu 10:00 (4d)
+   / Search              │ 日本語アカウント                                                   │
+                         │                                                                    │is month
+                         │    1 Preferred                                                     │
+   Accounts              │  › 2 Normal                                                        │
+   · A very long account │    3 Last resort                                                   │
+     and on, far past the│                                                                    │
+     sidebar             │  Set mark  Enter    Cancel  Esc                                    │
+ › ★ 日本語アカウント    ╰────────────────────────────────────────────────────────────────────╯
+   · jane.doe+claude@example.com       ⊘ 2d  │     weekly    ▂▂▂ ▂▂▂ ▃▃▃ ▄▄▄ ▄▄▄ ▅▅▅ ▅▅▅
+   ▿ acct4                          sign in  │   Hops        1 in · 1 out · 0 refusals
+                                             │   Sessions    sports-odds
+   Sessions                               2  │
+   ⠋ sports-odds           日本語アカウント  │
+   ◆ pelican                                 │
+                                             │
+   + Add account                             │
+   ↑ more above   ↓ more below               │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ↑↓ Choose    ⏎ Select    Esc Close

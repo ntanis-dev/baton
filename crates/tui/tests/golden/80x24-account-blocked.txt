@@ -1,0 +1,23 @@
+   BATON                 │
+                         │   acct3
+   / Search              │   ⊘ blocked
+                         │
+     Overview            │   · #3 of 4 · normal · signed in (claude.ai)
+                         │   Thresholds  5-hour 90% · weekly 95%  (policy
+   Accounts           4  │               defaults)
+   · acct1        ⊘ 40m  │
+   ★ acct2       wk 63%  │   5-hour  ━━━━──────────────────────────┃───   12%
+ › · acct3         ⊘ 2d  │   weekly  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┃━─   97%
+   ▿ acct4      sign in  │   Read        5-hour from session 2m ago · weekly
+                         │               polled 42m ago
+   Sessions           2  │   Usage poll  usage endpoint rate limited (12m
+   ⠋ sports-odds  acct2  │               ago); asks again 10:03 (in 3m)
+   ◆ pelican      acct1  │   ⊘ Blocked by the weekly limit until Tue 10:00
+   + 2 recent            │     (in 2d)
+                         │   Weekly      weekly limit reached; resets in 2d
+     Policy       smart  │
+     Stats               │   7 days      Mon Tue Wed Thu Fri Sat Sun
+                         │     5h peak   ▇▇▇ ███ ███ ▇▇▇ ▇▇▇ ▆▆▆ ▂▂▂
+   + Add account         │     weekly    ▅▅▅ ▆▆▆ ▇▇▇ ▂▂▂ ▃▃▃ ▆▆▆ ███
+                         │    ┃ Threshold   ╺━╸ Next account       1–17 of 19
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    ? Keys    q Quit

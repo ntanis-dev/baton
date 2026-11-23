@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   acct3
+      / __ )/   |/_  __/ __ \/ | / /         │   ⊘ blocked
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   · #3 of 4 · normal · signed in (claude.ai)
+   /_____/_/  |_/_/  \____/_/ |_/            │   Thresholds  5-hour 90% · weekly 95%  (policy defaults)
+                                             │
+   Keep the conversation moving.             │   5-hour  ━━━────────────────────┃───   12%  resets 13:00 (3h)
+   Your Claude accounts.                     │   weekly  ━━━━━━━━━━━━━━━━━━━━━━━━━┃─   97%  resets Tue 10:00 (2d)
+   One continuous conversation.              │   Read        5-hour from session 2m ago · weekly polled 42m ago
+                                             │   Usage poll  usage endpoint rate limited (12m ago); asks again 10:03
+   / acct3                                   │               (in 3m)
+                                             │   ⊘ Blocked by the weekly limit until Tue 10:00 (in 2d)
+   Accounts                               1  │   Weekly      weekly limit reached; resets in 2d
+ › · acct3                             ⊘ 2d  │
+                                             │   7 days      Mon Tue Wed Thu Fri Sat Sun
+                                             │     5h peak   ▇▇▇ ███ ███ ▇▇▇ ▇▇▇ ▆▆▆ ▂▂▂
+                                             │     weekly    ▅▅▅ ▆▆▆ ▇▇▇ ▂▂▂ ▃▃▃ ▆▆▆ ███
+                                             │   Hops        0 in · 2 out · 1 refusal
+                                             │   Sessions    none running
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+   + Add account                             │
+                                             │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ↓ Results    ⏎ Done    Ctrl+U Clear    Esc Cancel

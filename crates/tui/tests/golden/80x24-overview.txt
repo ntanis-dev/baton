@@ -1,0 +1,23 @@
+   BATON                 │
+                         │   Overview
+   / Search              │   Usage updates every 30m  ·  next 10:18
+                         │
+ ›   Overview            │   1 ready   /   4 accounts   /   2 live sessions
+                         │
+   Accounts           4  │   NEXT ACCOUNT  ──────────────────────────────────
+   · acct1        ⊘ 40m  │   acct2
+   ★ acct2       wk 63%  │   preferred, with 5-hour room
+   · acct3         ⊘ 2d  │
+   ▿ acct4      sign in  │   ACCOUNTS  ──────────────────────────────────────
+                         │   Account         5-hour    Weekly    Status
+   Sessions           2  │   acct1           ━━━ 100%  ━━─  71%  Back in 40m
+   ⠋ sports-odds  acct2  │   acct2           ━──  42%  ━━─  63%  Ready
+   ◆ pelican      acct1  │   acct3           ───  12%  ━━━  97%  Back in 2d
+   + 2 recent            │   acct4           ───   5%  ━──  18%  Sign in
+                         │
+     Policy       smart  │   LIVE SESSIONS  ─────────────────────────────────
+     Stats               │   ⠋ sports-odds                              acct2
+                         │     Working · workflow running
+   + Add account         │   ◆ pelican                                  acct1
+                         │    ★ Preferred   ▿ Last resort          1–17 of 21
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    ? Keys    q Quit

@@ -1,0 +1,23 @@
+   BATON                 │
+                         │   Policy
+   / Search              │   1 unsaved
+                         │
+     Overview            │     Mode           [smart]  order
+                         │   › 5-hour limit   ←    85% →
+   Accounts           4  │     Weekly limit   ←    95% →
+   · acct1        ⊘ 40m  │     Start reserve  ←    20% →
+   ★ acct2       wk 63%  │     Plan factor    ←   1.5x →
+   · acct3         ⊘ 2d  │     Wait in place  ←    20m →       wait if sooner
+   ▿ acct4      sign in  │     Min stay       ←    30m →       no ping-pong
+                         │     Rebalance      ● on
+   Sessions           2  │     Usage poll     ←    30m →       every
+   ⠋ sports-odds  acct2  │     Bar usage      ○ off            after yours
+   ◆ pelican      acct1  │     Full sync      ● on             every account
+   + 2 recent            │
+                         │   Storage  ───────────────────────────────────────
+ ›   Policy       smart  │     History        ←   180d →       kept (0: all)
+     Stats               │     Sessions       ←    30d →       kept unseen
+                         │     Logs           ←    14d →       kept (0: all)
+   + Add account         │     Backups        ←     50 →       kept (0: all)
+                         │                                         1–17 of 21
+  ↑↓ Field    ←→ Adjust    0-9 Type    d Default    ⏎ Apply    Esc Done

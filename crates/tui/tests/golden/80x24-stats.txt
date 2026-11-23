@@ -1,0 +1,23 @@
+   BATON                 │
+                         │   Stats
+   / Search              │   last 7 days
+                         │
+     Overview            │   Oct 18 to Oct 25
+                         │
+   Accounts           4  │   USAGE BY DAY  ──────────────────────────────────
+   · acct1        ⊘ 40m  │               Mon  Tue  Wed  Thu  Fri  Sat  Sun
+   ★ acct2       wk 63%  │   · acct1
+   · acct3         ⊘ 2d  │     5h peak  ▅ 55 ▇ 80 █ 97 ▅ 64 ▇ 88 ▇ 92 █100
+   ▿ acct4      sign in  │     weekly   ▂ 12 ▃ 25 ▄ 41 ▄ 49 ▅ 58 ▆ 66 ▆ 71
+                         │   ★ acct2
+   Sessions           2  │     5h peak  ▂ 20 ▄ 45 ▆ 70 ▃ 30 ▅ 52 ▅ 61 ▄ 42
+   ⠋ sports-odds  acct2  │     weekly   ▂ 10 ▂ 18 ▃ 31 ▄ 38 ▄ 47 ▅ 55 ▅ 63
+   ◆ pelican      acct1  │   · acct3
+   + 2 recent            │     5h peak  ▇ 90 █ 95 █ 99 ▇ 85 ▇ 92 ▆ 77 ▂ 12
+                         │     weekly   ▅ 60 ▆ 72 ▇ 83 ▂  9 ▃ 30 ▆ 70 █ 97
+     Policy       smart  │   ▿ acct4
+ ›   Stats               │     5h peak  ▁  0 ▁  0 ▂ 12 ▁  0 ▂  8 ▁  0 ▁  5
+                         │     weekly   ▁  0 ▁  0 ▁  5 ▁  5 ▂ 11 ▂ 11 ▂ 18
+   + Add account         │
+                         │    ★ Preferred   ▿ Last resort          1–17 of 27
+  ↑↓ Navigate    Home/End Jump    PgUp/Dn Scroll    ? Keys    q Quit

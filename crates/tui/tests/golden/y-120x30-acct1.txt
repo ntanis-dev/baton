@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Account
+      / __ )/   |/_  __/ __ \/ | / /         │   ⊘ blocked
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   A very long account name that goes on and on, far past the width of
+   /_____/_/  |_/_/  \____/_/ |_/            │   the sidebar
+                                             │
+   Keep the conversation moving.             │   · #1 of 4 · normal · signed in (claude.ai)
+   Your Claude accounts.                     │   Thresholds  5-hour 90% · weekly 95%  (policy defaults)
+   One continuous conversation.              │
+                                             │   5-hour  ━━━━━━━━━━━━━━━━━━━━━━━┃━━━  100%  resets 10:40 (40m)
+   / Search                                  │   weekly  ━━━━━━━━━━━━━━━━━━━──────┃─   71%  resets Wed 12:00 (3d 2h)
+                                             │   Read        from session 2m ago
+     Overview                                │   Usage poll  polled 12m ago
+                                             │   ⊘ Blocked by the 5-hour limit until 10:40 (in 40m)
+   Accounts                               4  │     refused by Anthropic, not only over the threshold
+ › · A very long account name that goes on   │   Weekly      loses 24% in 3d 2h if unused
+     and on, far past the width of the       │
+     sidebar                                 │   7 days      Mon Tue Wed Thu Fri Sat Sun
+   ★ 日本語アカウント         5h 42 · wk 63  │     5h peak   ▅▅▅ ▇▇▇ ███ ▅▅▅ ▇▇▇ ▇▇▇ ███
+   · jane.doe+claude@example.com       ⊘ 2d  │     weekly    ▂▂▂ ▃▃▃ ▄▄▄ ▄▄▄ ▅▅▅ ▆▆▆ ▆▆▆
+   ▿ acct4                          sign in  │   Hops        2 in · 1 out · 2 refusals
+                                             │   Sessions    pelican
+   Sessions                               2  │
+   ⠋ sports-odds           日本語アカウント  │
+                                             │
+   + Add account                             │
+   ↓ more below                              │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    r Refresh    ? Keys    q Quit

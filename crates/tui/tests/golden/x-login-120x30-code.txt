@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Connect account
+      / __ )/   |/_  __/ __ \/ | / /         │   A new connection. The same conversation.
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │
+   /_____/_/  |_/_/  \____/_/ |_/            │   BROWSER SIGN-IN  ───────────────────────────────────────────────────
+                                             │
+   Keep the conversation moving.             │   Continue in your browser.
+   Your Claude accounts.                     │
+   One continuous conversation.              │   Sign in to the Claude account you want to use with Baton.
+                                             │
+                                             │
+   CONNECT ACCOUNT                           │   YOUR SIGN-IN LINK  ─────────────────────────────────────────────────
+                                             │
+   work@example.com                          │   Open Claude sign-in →
+                                             │
+                                             │   Ctrl+click the link if your browser did not open.
+   01 Open your browser                      │
+                                             │
+   02 Sign in to Claude                      │
+                                             │
+   03 Return to Baton                        │
+                                             │
+                                             │   VERIFICATION CODE
+                                             │   Paste your code, then press Enter.
+                                             │   >
+                                             │
+                                             │
+  Ctrl+C Cancel

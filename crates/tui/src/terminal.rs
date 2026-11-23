@@ -564,4 +564,139 @@ mod tests {
             ]
         );
     }
+
+    /// A stream the test writes into, chunk by chunk: it ends when the test drops its end.
+    struct Fed {
+        chunks: mpsc::Receiver<Vec<u8>>,
+        rest: Vec<u8>,
+    }
+
+    impl Read for Fed {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            if self.rest.is_empty() {
+                match self.chunks.recv() {
+                    Ok(chunk) => self.rest = chunk,
+                    Err(_) => return Ok(0),
+                }
+            }
+            let n = buffer.len().min(self.rest.len());
+            buffer[..n].copy_from_slice(&self.rest[..n]);
+            self.rest.drain(..n);
+            Ok(n)
+        }
+    }
+
+    /// A byte stream being read: where to write its bytes, what comes of them, and the reader.
+    fn fed(mouse: bool) -> (Sender<Vec<u8>>, mpsc::Receiver<Msg>, ByteKeys) {
+        let (bytes, chunks) = mpsc::channel();
+        let (to, got) = mpsc::channel();
+        let source = Fed {
+            chunks,
+            rest: Vec::new(),
+        };
+        (bytes, got, ByteKeys::start(Box::new(source), to, mouse))
+    }
+
+    /// The next action; panics when none comes, or when the input ended instead.
+    fn next(got: &mpsc::Receiver<Msg>) -> Action {
+        match got.recv_timeout(Duration::from_secs(5)) {
+            Ok(Msg::Action(action)) => action,
+            other => panic!("an action was expected: {other:?}"),
+        }
+    }
+
+    /// Whether nothing comes for a moment.
+    fn quiet(got: &mpsc::Receiver<Msg>) -> bool {
+        matches!(
+            got.recv_timeout(Duration::from_millis(150)),
+            Err(RecvTimeoutError::Timeout)
+        )
+    }
+
+    #[test]
+    fn the_bytes_a_terminal_sends_come_out_as_keys_and_the_end_of_the_stream_is_said() {
+        let (bytes, got, _keys) = fed(true);
+        bytes.send(b"\x1b[B".to_vec()).unwrap();
+        assert_eq!(next(&got), Action::Key(Key::Down));
+        bytes.send(b"\x1b[5~\r".to_vec()).unwrap();
+        assert_eq!(next(&got), Action::Key(Key::PageUp));
+        assert_eq!(next(&got), Action::Key(Key::Enter));
+        // Characters that arrive at once are one piece of text; alone, each is a key.
+        bytes.send(b"acct5".to_vec()).unwrap();
+        assert_eq!(next(&got), Action::Text("acct5".to_owned()));
+        bytes.send(b"q".to_vec()).unwrap();
+        assert_eq!(next(&got), Action::Key(Key::Char('q')));
+        bytes.send(vec![0x0c]).unwrap();
+        assert_eq!(next(&got), Action::Key(Key::Ctrl('l')));
+        // A click, as SGR reports it: press and release at column 11, row 6.
+        bytes.send(b"\x1b[<0;11;6M\x1b[<0;11;6m".to_vec()).unwrap();
+        let Action::Mouse(press) = next(&got) else {
+            panic!("a press");
+        };
+        assert_eq!((press.x, press.y, press.kind), (10, 5, MouseKind::Press));
+        let Action::Mouse(release) = next(&got) else {
+            panic!("a release");
+        };
+        assert_eq!(release.kind, MouseKind::Release);
+        drop(bytes);
+        assert!(matches!(
+            got.recv_timeout(Duration::from_secs(5)),
+            Ok(Msg::InputEnded)
+        ));
+    }
+
+    #[test]
+    fn a_sequence_cut_in_two_is_one_key_and_escape_alone_is_escape_after_a_moment() {
+        let (bytes, got, _keys) = fed(true);
+        // The start of an arrow, then the rest right after it: one key, and no Escape before it.
+        bytes.send(b"\x1b".to_vec()).unwrap();
+        bytes.send(b"[A".to_vec()).unwrap();
+        assert_eq!(next(&got), Action::Key(Key::Up));
+        // A character of several bytes cut in two.
+        let e = "\u{e9}".as_bytes();
+        bytes.send(e[..1].to_vec()).unwrap();
+        bytes.send(e[1..].to_vec()).unwrap();
+        assert_eq!(next(&got), Action::Key(Key::Char('\u{e9}')));
+        // Escape with nothing after it, on a stream that stays open: the key, once the wait is over.
+        bytes.send(b"\x1b".to_vec()).unwrap();
+        assert_eq!(next(&got), Action::Key(Key::Escape));
+        assert!(quiet(&got));
+        // What is held when the stream ends is let go before the end is said.
+        bytes.send(b"\x1b".to_vec()).unwrap();
+        drop(bytes);
+        assert_eq!(next(&got), Action::Key(Key::Escape));
+        assert!(matches!(
+            got.recv_timeout(Duration::from_secs(5)),
+            Ok(Msg::InputEnded)
+        ));
+    }
+
+    #[test]
+    fn mouse_reports_are_taken_out_when_the_mouse_is_off_and_never_typed() {
+        let (bytes, got, _keys) = fed(false);
+        bytes.send(b"\x1b[<0;11;6M\x1b[<0;11;6m".to_vec()).unwrap();
+        bytes.send(b"\x1b[<64;11;6M".to_vec()).unwrap();
+        assert!(quiet(&got));
+        bytes.send(b"\x1b[B".to_vec()).unwrap();
+        assert_eq!(next(&got), Action::Key(Key::Down));
+    }
+
+    #[test]
+    fn what_is_typed_while_the_reading_is_paused_waits_for_it_to_resume() {
+        let (bytes, got, mut keys) = fed(true);
+        bytes.send(b"\x1b[B".to_vec()).unwrap();
+        assert_eq!(next(&got), Action::Key(Key::Down));
+        // Paused (Claude Code's sign-in has the terminal): nothing of what is typed comes out.
+        keys.pause();
+        bytes.send(b"\x1b[A".to_vec()).unwrap();
+        bytes.send(b"\r".to_vec()).unwrap();
+        assert!(quiet(&got));
+        keys.resume();
+        assert_eq!(next(&got), Action::Key(Key::Up));
+        assert_eq!(next(&got), Action::Key(Key::Enter));
+        // Closed: nothing more, though the stream goes on.
+        keys.close();
+        bytes.send(b"q".to_vec()).unwrap();
+        assert!(got.recv_timeout(Duration::from_millis(150)).is_err());
+    }
 }

@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   sports-odds
+      / __ )/   |/_  __/ __ \/ | / /         │   live
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   on 日本語アカウント · live under baton
+   /_____/_/  |_/_/  \____/_/ |_/            │   Folder    /work/sports-odds
+                                             │   Session   6f0b2d4e-1c3a-4b5d-8e9f-0a1b2c3d4e5f
+   Keep the conversation moving.             │   Started   07:00 (3h ago)
+   Your Claude ╭─ Move sports-odds at the end of its turn to ───────────────────────╮
+   One continuo│                                                                    │ng, 2
+               │                                                                    │hell
+   / Search    │    1 A very long account name that goes on and on, far past the    │ run; only a
+               │      width of the sidebar  blocked 40m                             │
+   · jane.doe+c│  › 2 jane.doe+claude@example.com  blocked 2d                       │ (5 turns)
+   ▿ acct4     │    3 acct4                                                         │
+               │                                                                    │
+   Sessions    │  Move session  Enter    Cancel  Esc                                │
+ › ⠋ sports-odd╰────────────────────────────────────────────────────────────────────╯t goes on
+   ◆ pelican                                 │           and on, far past the width of the
+   + 2 recent                                │           sidebar → 日本語アカウント  refusal
+                                             │
+     Policy                           order  │
+     Stats                                   │
+                                             │
+   + Add account                             │
+   ↑ more above                              │    ⠋ Working   ● Idle   ◆ Wait / move   ○ Recent
+  ↑↓ Choose    ⏎ Select    Esc Close

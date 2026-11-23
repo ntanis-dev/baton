@@ -1,0 +1,23 @@
+   BATON                 │
+                         │   Policy
+   / Search              │   smart
+                         │
+     Overview            │     Plan factor    ←   1.5x →
+                         │     Wait in place  ←    20m →       wait if sooner
+   Accounts           4  │     Min stay       ←    30m →       no ping-pong
+   · acct1        ⊘ 40m  │     Rebalance      ● on
+   ★ acct2       wk 63%  │     Usage poll     ←    30m →       every
+   · acct3         ⊘ 2d  │     Bar usage      ○ off            after yours
+   ▿ acct4      sign in  │     Full sync      ● on             every account
+                         │
+   Sessions           2  │   Storage  ───────────────────────────────────────
+   ⠋ sports-odds  acct2  │     History        ←   180d →       kept (0: all)
+   ◆ pelican      acct1  │     Sessions       ←    30d →       kept unseen
+   + 2 recent            │     Logs           ←    14d →       kept (0: all)
+                         │     Backups        ←     50 →       kept (0: all)
+ ›   Policy       smart  │
+     Stats               │   ›  Apply   nothing changed yet
+                         │
+   + Add account         │   all at their defaults
+                         │                                         5–21 of 21
+  ↑↓ Field    ←→ Adjust    0-9 Type    d Default    ⏎ Apply    Esc Done

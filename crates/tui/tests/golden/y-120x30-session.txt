@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   sports-odds
+      / __ )/   |/_  __/ __ \/ | / /         │   live
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   on 日本語アカウント · live under baton
+   /_____/_/  |_/_/  \____/_/ |_/            │   Folder    /work/sports-odds
+                                             │   Session   6f0b2d4e-1c3a-4b5d-8e9f-0a1b2c3d4e5f
+   Keep the conversation moving.             │   Started   07:00 (3h ago)
+   Your Claude accounts.                     │   Model     claude-opus-5-5
+   One continuous conversation.              │   Now       ⠋ working · workflow running, 2 subagents · 1 background
+                                             │             shell
+   / Search                                  │             no planned hop while these run; only a refusal moves it
+                                             │   Per turn  3% of 5h · 0.5% of weekly  (5 turns)
+     sidebar                                 │   Burn      18%/h 5h · 3%/h weekly
+   ★ 日本語アカウント         5h 42 · wk 63  │
+   · jane.doe+claude@example.com       ⊘ 2d  │   Hops
+   ▿ acct4                          sign in  │     08:01 A very long account name that goes on and on, far past the
+                                             │           width of the sidebar → 日本語アカウント  refusal
+   Sessions                               2  │
+ › ⠋ sports-odds           日本語アカウント  │
+   ◆ pelican                                 │
+   + 2 recent                                │
+                                             │
+     Policy                           order  │
+     Stats                                   │
+                                             │
+   + Add account                             │
+   ↑ more above                              │    ⠋ Working   ● Idle   ◆ Wait / move   ○ Recent
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    r Refresh    ? Keys    q Quit

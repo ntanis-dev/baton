@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Connect account
+      / __ )/   |/_  __/ __ \/ | / /         │   A new connection. The same conversation.
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │
+   /_____/_/  |_/_/  \____/_/ |_/            │   BROWSER SIGN-IN  ───────────────────────────────────────────────────
+                                             │
+   Keep the conversation moving.             │   Continue in your browser.
+   Your Claude accounts.                     │
+   One continuous conversation.              │   Sign in to the Claude account you want to use with Baton.
+                                             │
+                                             │
+   CONNECT ACCOUNT                           │   YOUR SIGN-IN LINK  ─────────────────────────────────────────────────
+                                             │
+   work@example.com                          │   Open Claude sign-in →
+                                             │
+                                             │   If your browser did not open, Ctrl+click the link or copy it:
+   01 Open your browser                      │   https://claude.ai/oauth/authorize?client_id=fixture&state=public&cod
+                                             │   e=true
+   02 Sign in to Claude                      │
+                                             │
+   03 Return to Baton                        │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+  Ctrl+C Cancel

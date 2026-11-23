@@ -1,0 +1,23 @@
+   BATON                 │
+                         │   acct2
+   / Search              │   available
+     ╭─ Account actions ──────────────────────────────────────────────────╮
+     │                                                                    │
+     │ acct2                                                              │
+   Ac│                                                                    │
+   · │  › Rename                                                       e  │
+ › ★ │    Change mark                                                  m  │
+   · │    Usage thresholds                                             t  │2%
+   ▿ │    Refresh usage                                                r  │3%
+     │    Sign in again                                                s  │1%
+   Se│    Move up                                                      K  │
+   ⠋ │    Move down                                                    J  │is
+   ◆ │    Delete account                                               d  │
+   + │                                                                    │
+     │  Close  Esc                                                        │
+     ╰────────────────────────────────────────────────────────────────────╯
+     Stats               │
+                         │   7 days      Mon Tue Wed Thu Fri Sat Sun
+   + Add account         │     5h peak   ▂▂▂ ▄▄▄ ▆▆▆ ▃▃▃ ▅▅▅ ▅▅▅ ▄▄▄
+                         │    ┃ Threshold   ╺━╸ Next account       1–17 of 20
+  ↑↓ Choose    ⏎ Select    Esc Close

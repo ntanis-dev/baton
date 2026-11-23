@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   Stats
+      / __ )/   |/_  __/ __ \/ | / /         │   last 7 days
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   Oct 18 to Oct 25
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │   USAGE BY DAY  ──────────────────────────────────
+   Keep the conversation moving.             │               Mon  Tue  Wed  Thu  Fri  Sat  Sun
+   Your Claude accounts.                     │
+   One continuous conversation.              │   ACTIVITY  ──────────────────────────────────────
+                                             │               Mon  Tue  Wed  Thu  Fri  Sat  Sun
+   / Search                                  │     Hops        ·    ·    ·    ·    ·    ·    ·
+                                             │     Refusals    ·    ·    ·    ·    ·    ·    ·
+     Overview                                │     Sessions    ·    ·    ·    ·    ·    ·    ·
+                                             │
+     Policy                           smart  │   WEEKLY ALLOWANCE LOST AT RESETS  ───────────────
+ ›   Stats                                   │     no weekly reset in these 7 days
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+   + Add account                             │
+                                             │    ★ Preferred   ▿ Last resort   · Normal
+  ↑↓ Navigate    Home/End Jump    r Refresh    ? Keys    q Quit

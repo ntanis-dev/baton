@@ -1,0 +1,23 @@
+   BATON                 │
+                         │   acct2
+   / Search              │   available
+                         │
+     Overview            │   ★ #2 of 4 · preferred · signed in (claude.ai)
+                         │     ╺━╸ next work goes here
+   Accounts           4  │   Thresholds  5-hour 90% · weekly 95%  (policy
+   · acct1        ⊘ 40m  │               defaults)
+ › ★ acct2       wk 63%  │
+   · acct3         ⊘ 2d  │   5-hour  ━━━━━━━━━━━━━━────────────────┃───   42%
+   ▿ acct4      sign in  │   weekly  ━━━━━━━━━━━━━━━━━━━━━──────────┃──   63%
+                         │   Fable   ━━━━━━━━━━━━━━━━━━━━━━━━───────┃──   71%
+   Sessions           2  │   Read        polled 12m ago
+   ⠋ sports-odds  acct2  │   Extra usage on, 12.50 USD used of 50.00 USD this
+   ◆ pelican      acct1  │               month
+   + 2 recent            │   Usage poll  polled 12m ago
+                         │   ✓ Available now
+     Policy       smart  │   Weekly      loses 32% in 4d if unused
+     Stats               │
+                         │   7 days      Mon Tue Wed Thu Fri Sat Sun
+   + Add account         │     5h peak   ▂▂▂ ▄▄▄ ▆▆▆ ▃▃▃ ▅▅▅ ▅▅▅ ▄▄▄
+                         │    ┃ Threshold   ╺━╸ Next account       1–17 of 20
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    ? Keys    q Quit

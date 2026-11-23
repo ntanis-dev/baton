@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Recent sessions
+      / __ )/   |/_  __/ __ \/ | / /         │
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   Recent sessions  2 in the last 7 days, newest first
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │   royal-flush  acct4 · 20h ago · 1 hop
+   Keep the conversation moving.             │   baton  acct1 · 3d ago · 2 hops
+   Your Claude accounts.                     │
+   One continuous conversation.              │
+                                             │
+   / Search                                  │
+                                             │
+   · acct1                            ⊘ 40m  │
+   ★ acct2                    5h 42 · wk 63  │
+   · acct3                             ⊘ 2d  │
+   ▿ acct4                          sign in  │
+                                             │
+   Sessions                               2  │
+   ⠋ sports-odds                      acct2  │
+   ◆ pelican                          acct1  │
+ › + 2 recent                                │
+                                             │
+     Policy                           smart  │
+     Stats                                   │
+                                             │
+   + Add account                             │
+   ↑ more above                              │    ⠋ Working   ● Idle   ◆ Wait / move   ○ Recent
+  ↑↓ Navigate    Home/End Jump    ⏎ Expand    r Refresh    ? Keys    q Quit

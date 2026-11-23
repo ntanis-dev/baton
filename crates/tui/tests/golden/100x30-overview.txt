@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Overview
+      / __ )/   |/_  __/ __ \/ | / /         │   Usage updates every 30m  ·  next 10:18
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   1 ready   /   4 accounts   /   2 live sessions
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │   NEXT ACCOUNT  ──────────────────────────────────
+   Keep the conversation moving.             │   acct2
+   Your Claude accounts.                     │   preferred, with 5-hour room
+   One continuous conversation.              │
+                                             │   ACCOUNTS  ──────────────────────────────────────
+   / Search                                  │   Account         5-hour    Weekly    Status
+                                             │   acct1           ━━━ 100%  ━━─  71%  Back in 40m
+ ›   Overview                                │   acct2           ━──  42%  ━━─  63%  Ready
+                                             │   acct3           ───  12%  ━━━  97%  Back in 2d
+   Accounts                               4  │   acct4           ───   5%  ━──  18%  Sign in
+   · acct1                            ⊘ 40m  │
+   ★ acct2                    5h 42 · wk 63  │   LIVE SESSIONS  ─────────────────────────────────
+   · acct3                             ⊘ 2d  │   ⠋ sports-odds                              acct2
+   ▿ acct4                          sign in  │     Working · workflow running
+                                             │   ◆ pelican                                  acct1
+   Sessions                               2  │     Moving to acct2
+   ⠋ sports-odds                      acct2  │
+   ◆ pelican                          acct1  │   TODAY  ─────────────────────────────────────────
+   + 2 recent                                │   1 handoff  ·  2 refusals
+                                             │
+   + Add account                             │
+   ↓ more below                              │    ★ Preferred   ▿ Last resort   · Normal
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    r Refresh    ? Keys    q Quit

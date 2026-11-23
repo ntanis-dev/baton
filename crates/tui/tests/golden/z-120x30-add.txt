@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Stats
+      / __ )/   |/_  __/ __ \/ | / /         │   last 7 days
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   Oct 18 to Oct 25
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │   USAGE BY DAY  ──────────────────────────────────────────────────────
+   Keep the conversation moving.             │               Mon  Tue  Wed  Thu  Fri  Sat  Sun
+   Your Claude accounts.                     │
+   One continuous convers╭─ Add an account ───────────────────────────────────────────────────╮──────────────────────
+                         │                                                                    │  Total
+   / Search              │ Any name you like (an email, words, any script). Baton makes its   │      0
+                         │ profile, then Claude Code's sign-in runs in this terminal.         │      0
+     Overview            │                                                                    │      0
+                         │ ›                                                                  │
+     Policy              │                                                                    │──────────────────────
+ ›   Stats               │  Add account  Enter    Cancel  Esc                                 │
+                         ╰────────────────────────────────────────────────────────────────────╯
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+ › + Add account                             │
+                                             │    ★ Preferred   ▿ Last resort   · Normal   ⊘ Blocked
+  Ctrl+U Clear    ⏎ Save    Esc Cancel

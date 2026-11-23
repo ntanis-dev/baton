@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   acct2
+      / __ )/   |/_  __/ __ \/ | / /         │   available
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   ★ #2 of 4 · preferred · signed in (claude.ai)
+   /_____/_/  |_/_/  \____/_/ |_/            │     ╺━╸ next work goes here
+                                             │   Thresholds  5-hour 90% · weekly 95%  (policy defaults)
+   Keep the conversation moving.             │
+   Your Claude accounts.                     │   5-hour  ━━━━━━━━━━━────────────┃───   42%  resets 12:05 (2h 5m)
+   One continuous convers╭─ Thresholds of acct2 ──────────────────────────────────────────────╮ets Thu 10:00 (4d)
+                         │                                                                    │ets Thu 10:00 (4d)
+   / Search              │ At or above these, acct2 is blocked. "default" follows the policy. │
+                         │                                                                    │is month
+     Overview            │ › 5-hour  ← 7% →                                                   │
+                         │   Weekly  ← default (95%) →                                        │
+   Accounts              │                                                                    │
+   · acct1               │  Save  Enter    Cancel  Esc                                        │
+ › ★ acct2               ╰────────────────────────────────────────────────────────────────────╯
+   · acct3                             ⊘ 2d  │     5h peak   ▂▂▂ ▄▄▄ ▆▆▆ ▃▃▃ ▅▅▅ ▅▅▅ ▄▄▄
+   ▿ acct4                          sign in  │     weekly    ▂▂▂ ▂▂▂ ▃▃▃ ▄▄▄ ▄▄▄ ▅▅▅ ▅▅▅
+                                             │   Hops        1 in · 1 out · 0 refusals
+   Sessions                               2  │   Sessions    sports-odds
+   ⠋ sports-odds                      acct2  │
+   ◆ pelican                          acct1  │
+   + 2 recent                                │
+                                             │
+   + Add account                             │
+   ↓ more below                              │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ↑↓ Field    ←→ Adjust    0-9 Type    d Default    ⏎ Save    Esc Cancel

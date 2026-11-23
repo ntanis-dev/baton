@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   Stats
+      / __ )/   |/_  __/ __ \/ | / /         │   last 7 days
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   Oct 18 to Oct 25
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │   USAGE BY DAY  ──────────────────────────────────
+   Keep the conversation moving.             │               Mon  Tue  Wed  Thu  Fri  Sat  Sun
+   Your Claude accounts.                     │   · A very long account name that goes on and on,
+   One continuous conversation.              │     far past the width of the sidebar
+                                             │     5h peak  ▅ 55 ▇ 80 █ 97 ▅ 64 ▇ 88 ▇ 92 █100
+   / Search                                  │     weekly   ▂ 12 ▃ 25 ▄ 41 ▄ 49 ▅ 58 ▆ 66 ▆ 71
+                                             │   ★ 日本語アカウント
+   · jane.doe+claude@example.com       ⊘ 2d  │     5h peak  ▂ 20 ▄ 45 ▆ 70 ▃ 30 ▅ 52 ▅ 61 ▄ 42
+   ▿ acct4                          sign in  │     weekly   ▂ 10 ▂ 18 ▃ 31 ▄ 38 ▄ 47 ▅ 55 ▅ 63
+                                             │   · jane.doe+claude@example.com
+   Sessions                               2  │     5h peak  ▇ 90 █ 95 █ 99 ▇ 85 ▇ 92 ▆ 77 ▂ 12
+   ⠋ sports-odds           日本語アカウント  │     weekly   ▅ 60 ▆ 72 ▇ 83 ▂  9 ▃ 30 ▆ 70 █ 97
+   ◆ pelican                                 │   ▿ acct4
+   + 2 recent                                │     5h peak  ▁  0 ▁  0 ▂ 12 ▁  0 ▂  8 ▁  0 ▁  5
+                                             │     weekly   ▁  0 ▁  0 ▁  5 ▁  5 ▂ 11 ▂ 11 ▂ 18
+     Policy                           order  │
+ ›   Stats                                   │   ACTIVITY  ──────────────────────────────────────
+                                             │               Mon  Tue  Wed  Thu  Fri  Sat  Sun
+   + Add account                             │     Hops        ·    ·    1    1    ·    1    1
+   ↑ more above                              │    ★ Preferred   ▿ Last resort          1–21 of 28
+  ↑↓ Navigate    Home/End Jump    PgUp/Dn Scroll    r Refresh    ? Keys    q Quit

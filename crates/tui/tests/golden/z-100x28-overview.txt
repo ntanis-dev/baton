@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   Overview
+      / __ )/   |/_  __/ __ \/ | / /         │   Usage updates while Baton is running
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   Your next conversation starts here.
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │   Add your first account, then sign in with Claude
+   Keep the conversation moving.             │   Code. Baton keeps the conversation moving
+   Your Claude accounts.                     │   between the accounts you add.
+   One continuous conversation.              │
+                                             │   + Add an account
+   / Search                                  │
+                                             │
+ ›   Overview                                │
+                                             │
+     Policy                           smart  │
+     Stats                                   │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+   + Add account                             │
+                                             │    ★ Preferred   ▿ Last resort   · Normal
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    r Refresh    ? Keys    q Quit

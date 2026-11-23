@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   acct4
+      / __ )/   |/_  __/ __ \/ | / /         │   available
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   ▿ #4 of 4 · last resort · signed out
+   /_____/_/  |_/_/  \____/_/ |_/            │   Thresholds  5-hour 90% · weekly 90%
+                                             │
+   Keep the conversation moving.             │   5-hour  ━──────────────────────┃───    5%  resets 14:00 (4h)
+   Your Claude accounts.                     │   weekly  ━━━━━──────────────────┃───   18%  resets Sat 10:00 (6d)
+   One continuous conversation.              │   Read        from session 42m ago
+                                             │   Usage poll  signed out: not polled
+   / Search                                  │   ✓ Available now
+                                             │   Weekly      loses 72% in 6d if unused
+   · A very long account name that goes on   │
+     and on, far past the width of the       │   7 days      Mon Tue Wed Thu Fri Sat Sun
+     sidebar                                 │     5h peak   ▁▁▁ ▁▁▁ ▂▂▂ ▁▁▁ ▂▂▂ ▁▁▁ ▂▂▂
+   ★ 日本語アカウント         5h 42 · wk 63  │     weekly    ▁▁▁ ▁▁▁ ▂▂▂ ▂▂▂ ▂▂▂ ▂▂▂ ▂▂▂
+   · jane.doe+claude@example.com       ⊘ 2d  │   Hops        1 in · 0 out · 0 refusals
+ › ▿ acct4                          sign in  │   Sessions    none running
+                                             │
+   Sessions                               2  │
+   ⠋ sports-odds           日本語アカウント  │
+   ◆ pelican                                 │
+   + 2 recent                                │
+                                             │
+                                             │
+   + Add account                             │
+   ↑ more above   ↓ more below               │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    r Refresh    ? Keys    q Quit

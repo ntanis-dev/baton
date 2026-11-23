@@ -1,0 +1,9 @@
+
+                           BATON
+
+                    A little more room.
+            Baton needs 80 x 24 terminal cells.
+         Current size: 60 x 10. Resize to continue.
+
+                          q  Quit
+

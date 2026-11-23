@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   jane.doe+claude@example.com
+      / __ )/   |/_  __/ __ \/ | / /         │   ⊘ blocked
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   · #3 of 4 · normal · signed in (claude.ai)
+   /_____/_/  |_/_/  \____/_/ |_/            │   Thresholds  5-hour 80% · weekly 95%
+                                             │
+   Keep the conversation moving.             │   5-hour  ━━━━──────────────────────┃───────   12%
+   Your Claude ╭─ Thresholds of jane.doe+claude@example.com ────────────────────────╮━━━┃━─   97%
+   One continuo│                                                                    │go · weekly
+               │ At or above these, jane.doe+claude@example.com is blocked.         │
+   / Search    │ "default" follows the policy.                                      │ted (12m
+               │                                                                    │in 3m)
+   · A very lon│   5-hour  ← 81% →                                                  │Tue 10:00
+     and on, fa│ › Weekly  ← 94% →                                                  │
+     sidebar   │                                                                    │sets in 2d
+   ★ 日本語アカ│  Save  Enter    Cancel  Esc                                        │
+ › · jane.doe+c╰────────────────────────────────────────────────────────────────────╯Sun
+   ▿ acct4                          sign in  │     5h peak   ▇▇▇ ███ ███ ▇▇▇ ▇▇▇ ▆▆▆ ▂▂▂
+                                             │     weekly    ▅▅▅ ▆▆▆ ▇▇▇ ▂▂▂ ▃▃▃ ▆▆▆ ███
+   Sessions                               2  │   Hops        0 in · 2 out · 1 refusal
+   ⠋ sports-odds           日本語アカウント  │   Sessions    none running
+   ◆ pelican                                 │
+                                             │
+   + Add account                             │
+   ↑ more above   ↓ more below               │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ↑↓ Field    ←→ Adjust    0-9 Type    d Default    ⏎ Save    Esc Cancel

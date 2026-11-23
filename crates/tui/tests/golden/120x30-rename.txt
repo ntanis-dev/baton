@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   acct2
+      / __ )/   |/_  __/ __ \/ | / /         │   available
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   ★ #2 of 4 · preferred · signed in (claude.ai)
+   /_____/_/  |_/_/  \____/_/ |_/            │     ╺━╸ next work goes here
+                                             │   Thresholds  5-hour 90% · weekly 95%  (policy defaults)
+   Keep the conversation moving.             │
+   Your Claude accounts.                     │   5-hour  ━━━━━━━━━━━────────────┃───   42%  resets 12:05 (2h 5m)
+   One continuous convers╭─ Rename acct2 ─────────────────────────────────────────────────────╮ets Thu 10:00 (4d)
+                         │                                                                    │ets Thu 10:00 (4d)
+   / Search              │ Any name you like (an email, words, any script). Its profile,      │
+                         │ sign-in, sessions and history stay as they are.                    │is month
+     Overview            │                                                                    │
+                         │ › acct2                                                            │
+   Accounts              │                                                                    │
+   · acct1               │  Rename  Enter    Cancel  Esc                                      │
+ › ★ acct2               ╰────────────────────────────────────────────────────────────────────╯
+   · acct3                             ⊘ 2d  │     5h peak   ▂▂▂ ▄▄▄ ▆▆▆ ▃▃▃ ▅▅▅ ▅▅▅ ▄▄▄
+   ▿ acct4                          sign in  │     weekly    ▂▂▂ ▂▂▂ ▃▃▃ ▄▄▄ ▄▄▄ ▅▅▅ ▅▅▅
+                                             │   Hops        1 in · 1 out · 0 refusals
+   Sessions                               2  │   Sessions    sports-odds
+   ⠋ sports-odds                      acct2  │
+   ◆ pelican                          acct1  │
+   + 2 recent                                │
+                                             │
+   + Add account                             │
+   ↓ more below                              │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  Ctrl+U Clear    ⏎ Save    Esc Cancel

@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   Stats
+      / __ )/   |/_  __/ __ \/ | / /         │   last 7 days
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   Oct 18 to Oct 25
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │   USAGE BY DAY  ──────────────────────────────────
+   Keep the conversation moving.             │               Mon  Tue  Wed  Thu  Fri  Sat  Sun
+   Your Claude ╭─ Add an account ───────────────────────────────────────────────────╮
+   One continuo│                                                                    │────────────
+               │ Any name you like (an email, words, any script). Baton makes its   │ Sat  Sun
+   / Search    │ profile, then Claude Code's sign-in runs in this terminal.         │   ·    ·
+               │                                                                    │   ·    ·
+     Overview  │ ›                                                                  │   ·    ·
+               │                                                                    │
+     Policy    │  Add account  Enter    Cancel  Esc                                 │────────────
+ ›   Stats     ╰────────────────────────────────────────────────────────────────────╯
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+ › + Add account                             │
+                                             │    ★ Preferred   ▿ Last resort   · Normal
+  Ctrl+U Clear    ⏎ Save    Esc Cancel

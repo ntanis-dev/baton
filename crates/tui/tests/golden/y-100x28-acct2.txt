@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   日本語アカウント
+      / __ )/   |/_  __/ __ \/ | / /         │   available
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   ★ #2 of 4 · preferred · signed in (claude.ai)
+   /_____/_/  |_/_/  \____/_/ |_/            │     ╺━╸ next work goes here
+                                             │   Thresholds  5-hour 90% · weekly 95%  (policy
+   Keep the conversation moving.             │               defaults)
+   Your Claude accounts.                     │
+   One continuous conversation.              │   5-hour  ━━━━━━━━━━━━━━────────────────┃───   42%
+                                             │   weekly  ━━━━━━━━━━━━━━━━━━━━━──────────┃──   63%
+   / Search                                  │   Fable   ━━━━━━━━━━━━━━━━━━━━━━━━───────┃──   71%
+                                             │   Read        polled 12m ago
+   Accounts                               4  │   Extra usage on, 12.50 USD used of 50.00 USD this
+   · A very long account name that goes on   │               month
+     and on, far past the width of the       │   Usage poll  polled 12m ago
+     sidebar                                 │   ✓ Available now
+ › ★ 日本語アカウント         5h 42 · wk 63  │   Weekly      loses 32% in 4d if unused
+   · jane.doe+claude@example.com       ⊘ 2d  │
+   ▿ acct4                          sign in  │   7 days      Mon Tue Wed Thu Fri Sat Sun
+                                             │     5h peak   ▂▂▂ ▄▄▄ ▆▆▆ ▃▃▃ ▅▅▅ ▅▅▅ ▄▄▄
+   Sessions                               2  │     weekly    ▂▂▂ ▂▂▂ ▃▃▃ ▄▄▄ ▄▄▄ ▅▅▅ ▅▅▅
+   ⠋ sports-odds           日本語アカウント  │   Hops        1 in · 1 out · 0 refusals
+                                             │   Sessions    sports-odds
+   + Add account                             │
+   ↑ more above   ↓ more below               │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    r Refresh    ? Keys    q Quit

@@ -1,0 +1,44 @@
+                                             │
+       ____  ___  __________  _   __         │   sports-odds
+      / __ )/   |/_  __/ __ \/ | / /         │   live
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   on acct2 · live under baton
+   /_____/_/  |_/_/  \____/_/ |_/            │   Folder    /work/sports-odds
+                                             │   Session   6f0b2d4e-1c3a-4b5d-8e9f-0a1b2c3d4e5f
+   Keep the conversation moving.             │   Started   07:00 (3h ago)
+   Your Claude accounts.                     │   Model     claude-opus-5-5
+   One continuous conversation.              │   Now       ⠋ working · workflow running, 2 subagents · 1 background shell
+                                             │             no planned hop while these run; only a refusal moves it
+   / Search                                  │   Per turn  3% of 5h · 0.5% of weekly  (5 turns)
+                                             │   Burn      18%/h 5h · 3%/h weekly
+     Overview                                │
+                                             │   Hops
+   Accounts                               4  │     08:01 acct1 → acct2  refusal
+   · acct1                            ⊘ 40m  │
+   ★ acct2                    5h 42 · wk 63  ╭─ Move sports-odds at the end of its turn to ───────────────────────╮
+   · acct3                             ⊘ 2d  │                                                                    │
+   ▿ acct4                          sign in  │                                                                    │
+                                             │  › 1 acct1  blocked 40m                                            │
+   Sessions                               2  │    2 acct3  blocked 2d                                             │
+ › ⠋ sports-odds                      acct2  │    3 acct4                                                         │
+   ◆ pelican                          acct1  │                                                                    │
+   + 2 recent                                │  Move session  Enter    Cancel  Esc                                │
+                                             ╰────────────────────────────────────────────────────────────────────╯
+     Policy                           smart  │
+     Stats                                   │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+   + Add account                             │
+                                             │    ⠋ Working   ● Idle   ◆ Wait / move   ○ Recent
+  ↑↓ Choose    ⏎ Select    Esc Close

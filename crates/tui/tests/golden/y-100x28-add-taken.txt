@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   Stats
+      / __ )/   |/_  __/ __ \/ | / /         │   last 7 days
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   Oct 18 to Oct 25
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │   USAGE BY DAY  ──────────────────────────────────
+   Keep the conversation moving.             │               Mon  Tue  Wed  Thu  Fri  Sat  Sun
+   Your Claude ╭─ Add an account ───────────────────────────────────────────────────╮ on and on,
+   One continuo│                                                                    │
+               │ Any name you like (an email, words, any script). Baton makes its   │▇ 92 █100
+   / Search    │ profile, then Claude Code's sign-in runs in this terminal.         │▆ 66 ▆ 71
+               │                                                                    │
+   · jane.doe+c│ › ACCT4                                                            │▅ 61 ▄ 42
+   ▿ acct4     │                                                                    │▅ 55 ▅ 63
+               │  Add account  Enter    Cancel  Esc                                 │
+   Sessions    ╰────────────────────────────────────────────────────────────────────╯▆ 77 ▂ 12
+   ⠋ sports-odds           日本語アカウント  │     weekly   ▅ 60 ▆ 72 ▇ 83 ▂  9 ▃ 30 ▆ 70 █ 97
+   ◆ pelican                                 │   ▿ acct4
+   + 2 recent                                │     5h peak  ▁  0 ▁  0 ▂ 12 ▁  0 ▂  8 ▁  0 ▁  5
+                                             │     weekly   ▁  0 ▁  0 ▁  5 ▁  5 ▂ 11 ▂ 11 ▂ 18
+     Policy                           order  │
+ ›   Stats                                   │   ACTIVITY  ──────────────────────────────────────
+                                             │               Mon  Tue  Wed  Thu  Fri  Sat  Sun
+ › + Add account                             │     Hops  ✗  acct4 is the name of another account.
+   ↑ more above                              │    ★ Preferred   ▿ Last resort          1–21 of 28
+  Ctrl+U Clear    ⏎ Save    Esc Cancel

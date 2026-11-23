@@ -1,0 +1,44 @@
+                                             │
+       ____  ___  __________  _   __         │   acct2
+      / __ )/   |/_  __/ __ \/ | / /         │   available
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   ★ #2 of 4 · preferred · signed in (claude.ai) · ╺━╸ next work goes here
+   /_____/_/  |_/_/  \____/_/ |_/            │   Thresholds  5-hour 90% · weekly 95%  (policy defaults)
+                                             │
+   Keep the conversation moving.             │   5-hour  ━━━━━━━━━━━━━━━━━──────────────────┃────   42%  resets 12:05 (2h 5m)
+   Your Claude accounts.                     │   weekly  ━━━━━━━━━━━━━━━━━━━━━━━━━────────────┃──   63%  resets Thu 10:00 (4d)
+   One continuous conversation.              │   Fable   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━─────────┃──   71%  resets Thu 10:00 (4d)
+                                             │   Read        polled 12m ago
+   / Search                                  │   Extra usage on, 12.50 USD used of 50.00 USD this month
+                                             │   Usage poll  polled 12m ago
+     Overview                                │   ✓ Available now
+                                             ╭─ Account actions ──────────────────────────────────────────────────╮
+   Accounts                               4  │                                                                    │
+   · acct1                            ⊘ 40m  │ acct2                                                              │
+ › ★ acct2                    5h 42 · wk 63  │                                                                    │
+   · acct3                             ⊘ 2d  │  › Rename                                                       e  │
+   ▿ acct4                          sign in  │    Change mark                                                  m  │
+                                             │    Usage thresholds                                             t  │
+   Sessions                               2  │    Refresh usage                                                r  │
+   ⠋ sports-odds                      acct2  │    Sign in again                                                s  │
+   ◆ pelican                          acct1  │    Move up                                                      K  │
+   + 2 recent                                │    Move down                                                    J  │
+                                             │    Delete account                                               d  │
+     Policy                           smart  │                                                                    │
+     Stats                                   │  Close  Esc                                                        │
+                                             ╰────────────────────────────────────────────────────────────────────╯
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+   + Add account                             │
+                                             │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ↑↓ Choose    ⏎ Select    Esc Close

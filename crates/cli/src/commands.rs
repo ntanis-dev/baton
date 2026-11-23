@@ -937,7 +937,7 @@ pub fn commands() -> Vec<Command> {
                     "baton account remove <name>",
                     "baton account order <name...>",
                     "baton account move <name> <position>",
-                    "baton account set <name> [--mark preferred|normal|last-resort] [--last-resort true|false] [--five-hour n|default] [--weekly n|default]",
+                    "baton account set <name> [--mark preferred|normal|last-resort] [--last-resort [on|off]] [--five-hour n|default] [--weekly n|default]",
                 ],
                 "Manage the accounts: names, order, marks and thresholds.",
                 run_account,
@@ -1024,7 +1024,15 @@ pub fn commands() -> Vec<Command> {
                 "baton policy [--json] [{}]",
                 POLICY_FLAGS
                     .iter()
-                    .map(|(flag, _)| format!("--{flag} <value|default>"))
+                    .map(|(flag, key)| {
+                        // A setting that is on or off is on when its option stands alone.
+                        let on_or_off = Policy::default().get(key).is_some_and(|value| value.is_boolean());
+                        if on_or_off {
+                            format!("--{flag} [on|off|default]")
+                        } else {
+                            format!("--{flag} <value|default>")
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join(" ")
             )],

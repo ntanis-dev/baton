@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Overview
+      / __ )/   |/_  __/ __ \/ | / /         │   Usage updates every 30m  ·  next 10:18
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   0 ready   /   4 accounts   /   2 live sessions
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │   NEXT ACCOUNT  ──────────────────────────────────
+   Keep the conversation moving.             │   All accounts are at their limit
+   Your Claude accounts.                     │   acct1 returns in 40m
+   One continuous conversation.              │
+                                             │   ACCOUNTS  ──────────────────────────────────────
+   / Search                                  │   Account         5-hour    Weekly    Status
+                                             │   acct1           ━━━ 100%  ━━─  71%  Back in 40m
+ ›   Overview                                │   acct2           ━━━ 100%  ━━─  66%  Back in 1h
+                                             │     10m
+   Accounts                               4  │   acct3           ───  12%  ━━━  97%  Back in 2d
+   · acct1                            ⊘ 40m  │   acct4           ━──  30%  ━━━  92%  Sign in
+   ★ acct2                         ⊘ 1h 10m  │
+   · acct3                             ⊘ 2d  │   LIVE SESSIONS  ─────────────────────────────────
+   ▿ acct4                          sign in  │   ⠋ sports-odds                              acct2
+                                             │     Working · workflow running
+   Sessions                               2  │   ◆ pelican                                  acct1
+   ⠋ sports-odds                      acct2  │     Waiting
+   ◆ pelican                          acct1  │
+   + 2 recent                                │   TODAY  ─────────────────────────────────────────
+                                             │   1 handoff  ·  2 refusals
+   + Add account                             │
+   ↓ more below                              │    ★ Preferred   ▿ Last resort   · Normal
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    r Refresh    ? Keys    q Quit

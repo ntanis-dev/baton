@@ -7,6 +7,7 @@
 //! signed out).
 #![allow(dead_code, clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
+pub mod frames;
 pub mod vt;
 
 use std::sync::Arc;
@@ -298,7 +299,7 @@ pub fn build_home(paths: &Paths, all_blocked: bool) {
         "1001-aaaa",
         S1,
         "acct2",
-        "E:\\GitHub\\ntanis-dev\\sports-odds",
+        "/work/sports-odds",
         "running",
         json!({}),
     );
@@ -337,7 +338,7 @@ pub fn build_home(paths: &Paths, all_blocked: bool) {
         "1002-bbbb",
         S2,
         "acct1",
-        "E:\\GitHub\\ntanis-dev\\pelican",
+        "/work/pelican",
         if all_blocked { "waiting" } else { "countdown" },
         extra,
     );
@@ -351,8 +352,8 @@ pub fn build_home(paths: &Paths, all_blocked: bool) {
     .unwrap();
     // Recent, ended sessions.
     for (id, account, cwd, ago) in [
-        (S3, "acct4", "E:\\GitHub\\ntanis-dev\\royal-flush", 20 * H),
-        (S4, "acct1", "E:\\GitHub\\ntanis-dev\\baton", 3 * D),
+        (S3, "acct4", "/work/royal-flush", 20 * H),
+        (S4, "acct1", "/work/baton", 3 * D),
     ] {
         let dir = paths.sessions.join(id);
         write_json_atomic(

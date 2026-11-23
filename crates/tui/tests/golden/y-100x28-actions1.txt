@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   Account
+      / __ )/   |/_  __/ __ \/ | / /         │   ⊘ blocked
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   A very long account name that goes on and on,
+   /_____/_/  |╭─ Account actions ──────────────────────────────────────────────────╮
+               │                                                                    │
+   Keep the con│ A very long account name that goes on and on, far past the width   │de.ai)
+   Your Claude │ of the sidebar                                                     │ (policy
+   One continuo│                                                                    │
+               │  › Rename                                                       e  │
+   / Search    │    Change mark                                                  m  │━━┃━━━  100%
+               │    Usage thresholds                                             t  │───┃──   71%
+     Overview  │    Refresh usage                                                r  │
+               │    Sign in again                                                s  │
+   Accounts    │    Move down                                                    J  │10:40 (in
+ › · A very lon│    Delete account                                               d  │
+     and on, fa│                                                                    │r the
+     sidebar   │  Close  Esc                                                        │
+   ★ 日本語アカ╰────────────────────────────────────────────────────────────────────╯used
+   · jane.doe+claude@example.com       ⊘ 2d  │
+   ▿ acct4                          sign in  │   7 days      Mon Tue Wed Thu Fri Sat Sun
+                                             │     5h peak   ▅▅▅ ▇▇▇ ███ ▅▅▅ ▇▇▇ ▇▇▇ ███
+                                             │     weekly    ▂▂▂ ▃▃▃ ▄▄▄ ▄▄▄ ▅▅▅ ▆▆▆ ▆▆▆
+   + Add account                             │   Hops        2 in · 1 out · 2 refusals
+   ↓ more below                              │    ┃ Threshold   ╺━╸ Next account       1–21 of 22
+  ↑↓ Choose    ⏎ Select    Esc Close

@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   日本語アカウント
+      / __ )/   |/_  __/ __ \/ | / /         │   available
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   ★ #2 of 4 · preferred · signed in (claude.ai)
+   /_____/_/  |_/_/  \____/_/ |_/            │     ╺━╸ next work goes here
+                                             │   Thresholds  5-hour 90% · weekly 95%  (policy
+   Keep the conversation moving.             │               defaults)
+   Your Claude accounts.                     │
+   One continuous conversation.              │   5-hour  ━━━━━━━━━━━━━━────────────────┃───   42%
+                                             │   weekly  ━━━━━━━━━━━━━━━━━━━━━──────────┃──   63%
+   / 日本                                    │   Fable   ━━━━━━━━━━━━━━━━━━━━━━━━───────┃──   71%
+                                             │   Read        polled 12m ago
+   Accounts                               1  │   Extra usage on, 12.50 USD used of 50.00 USD this
+ › ★ 日本語アカウント         5h 42 · wk 63  │               month
+                                             │   Usage poll  polled 12m ago
+   Sessions                               1  │   ✓ Available now
+   ⠋ sports-odds           日本語アカウント  │   Weekly      loses 32% in 4d if unused
+                                             │
+                                             │   7 days      Mon Tue Wed Thu Fri Sat Sun
+                                             │     5h peak   ▂▂▂ ▄▄▄ ▆▆▆ ▃▃▃ ▅▅▅ ▅▅▅ ▄▄▄
+                                             │     weekly    ▂▂▂ ▂▂▂ ▃▃▃ ▄▄▄ ▄▄▄ ▅▅▅ ▅▅▅
+                                             │   Hops        1 in · 1 out · 0 refusals
+                                             │   Sessions    sports-odds
+   + Add account                             │
+                                             │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ↓ Results    ⏎ Done    Ctrl+U Clear    Esc Cancel

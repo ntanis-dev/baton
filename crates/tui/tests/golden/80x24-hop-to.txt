@@ -1,0 +1,23 @@
+   BATON                 │
+                         │   sports-odds
+   / Search              │   live
+                         │
+     Overview            │   on acct2 · live under baton
+                         │   Folder    /work/sports-odds
+   Ac╭─ Move sports-odds at the end of its turn to ───────────────────────╮
+   · │                                                                    │
+   ★ │                                                                    │
+   · │  › 1 acct1  blocked 40m                                            │
+   ▿ │    2 acct3  blocked 2d                                             │
+     │    3 acct4                                                         │ a
+   Se│                                                                    │
+ › ⠋ │  Move session  Enter    Cancel  Esc                                │
+   ◆ ╰────────────────────────────────────────────────────────────────────╯
+   + 2 recent            │
+                         │   Hops
+     Policy       smart  │     08:01 acct1 → acct2  refusal
+     Stats               │
+                         │
+   + Add account         │
+                         │    ⠋ Working   ● Idle   ◆ Wait / move   ○ Recent
+  ↑↓ Choose    ⏎ Select    Esc Close

@@ -1,0 +1,44 @@
+                                             │
+       ____  ___  __________  _   __         │   acct2
+      / __ )/   |/_  __/ __ \/ | / /         │   available
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   ★ #2 of 4 · preferred · signed in (claude.ai) · ╺━╸ next work goes here
+   /_____/_/  |_/_/  \____/_/ |_/            │   Thresholds  5-hour 90% · weekly 95%  (policy defaults)
+                                             │
+   Keep the conversation moving.             │   5-hour  ━━━━━━━━━━━━━━━━━──────────────────┃────   42%  resets 12:05 (2h 5m)
+   Your Claude accounts.                     │   weekly  ━━━━━━━━━━━━━━━━━━━━━━━━━────────────┃──   63%  resets Thu 10:00 (4d)
+   One continuous conversation.              │   Fable   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━─────────┃──   71%  resets Thu 10:00 (4d)
+                                             │   Read        polled 12m ago
+   / Search                                  │   Extra usage on, 12.50 USD used of 50.00 USD this month
+                                             │   Usage poll  polled 12m ago
+     Overview                                │   ✓ Available now
+                                             │   Weekly      loses 32% in 4d if unused
+   Accounts                               4  │
+   · acct1                            ⊘ 40m  │   7 days      Mon Tue Wed Thu Fri Sat Sun
+ › ★ acct2                    5h 42 · wk 63  │     5h peak   ▂▂▂ ▄▄▄ ▆▆▆ ▃▃▃ ▅▅▅ ▅▅▅ ▄▄▄
+   · acct3                             ⊘ 2d  │     weekly    ▂▂▂ ▂▂▂ ▃▃▃ ▄▄▄ ▄▄▄ ▅▅▅ ▅▅▅
+   ▿ acct4                          sign in  │   Hops        1 in · 1 out · 0 refusals
+                                             │   Sessions    sports-odds
+   Sessions                               2  │
+   ⠋ sports-odds                      acct2  │
+   ◆ pelican                          acct1  │
+   + 2 recent                                │
+                                             │
+     Policy                           smart  │
+     Stats                                   │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+   + Add account                             │
+                                             │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    r Refresh    ? Keys    q Quit

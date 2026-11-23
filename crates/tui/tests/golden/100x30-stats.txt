@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Stats
+      / __ )/   |/_  __/ __ \/ | / /         │   last 7 days
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   Oct 18 to Oct 25
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │   USAGE BY DAY  ──────────────────────────────────
+   Keep the conversation moving.             │               Mon  Tue  Wed  Thu  Fri  Sat  Sun
+   Your Claude accounts.                     │   · acct1
+   One continuous conversation.              │     5h peak  ▅ 55 ▇ 80 █ 97 ▅ 64 ▇ 88 ▇ 92 █100
+                                             │     weekly   ▂ 12 ▃ 25 ▄ 41 ▄ 49 ▅ 58 ▆ 66 ▆ 71
+   / Search                                  │   ★ acct2
+                                             │     5h peak  ▂ 20 ▄ 45 ▆ 70 ▃ 30 ▅ 52 ▅ 61 ▄ 42
+   · acct1                            ⊘ 40m  │     weekly   ▂ 10 ▂ 18 ▃ 31 ▄ 38 ▄ 47 ▅ 55 ▅ 63
+   ★ acct2                    5h 42 · wk 63  │   · acct3
+   · acct3                             ⊘ 2d  │     5h peak  ▇ 90 █ 95 █ 99 ▇ 85 ▇ 92 ▆ 77 ▂ 12
+   ▿ acct4                          sign in  │     weekly   ▅ 60 ▆ 72 ▇ 83 ▂  9 ▃ 30 ▆ 70 █ 97
+                                             │   ▿ acct4
+   Sessions                               2  │     5h peak  ▁  0 ▁  0 ▂ 12 ▁  0 ▂  8 ▁  0 ▁  5
+   ⠋ sports-odds                      acct2  │     weekly   ▁  0 ▁  0 ▁  5 ▁  5 ▂ 11 ▂ 11 ▂ 18
+   ◆ pelican                          acct1  │
+   + 2 recent                                │   ACTIVITY  ──────────────────────────────────────
+                                             │               Mon  Tue  Wed  Thu  Fri  Sat  Sun
+     Policy                           smart  │     Hops        ·    ·    1    1    ·    1    1
+ ›   Stats                                   │     Refusals    ·    ·    ·    1    ·    ·    2
+                                             │     Sessions    ·    1    ·    ·    ·    1    2
+   + Add account                             │     Why hops 1 planned · 2 refusal · 1 compaction
+   ↑ more above                              │    ★ Preferred   ▿ Last resort          1–23 of 27
+  ↑↓ Navigate    Home/End Jump    PgUp/Dn Scroll    r Refresh    ? Keys    q Quit

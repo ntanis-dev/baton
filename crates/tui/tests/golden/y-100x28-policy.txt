@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   Policy
+      / __ )/   |/_  __/ __ \/ | / /         │   order
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   › Mode            smart  [order]
+   /_____/_/  |_/_/  \____/_/ |_/            │     5-hour limit   ←    90% →
+                                             │     Weekly limit   ←    95% →
+   Keep the conversation moving.             │     Start reserve  ←    20% →
+   Your Claude accounts.                     │     Plan factor    ←   1.5x →
+   One continuous conversation.              │     Wait in place  ←    20m →       wait if sooner
+                                             │     Min stay       ←    30m →       no ping-pong
+   / Search                                  │     Rebalance      ● on
+                                             │     Usage poll     ←     0m →       every
+   · jane.doe+claude@example.com       ⊘ 2d  │     Bar usage      ○ off            after yours
+   ▿ acct4                          sign in  │     Full sync      ● on             every account
+                                             │
+   Sessions                               2  │   Storage  ───────────────────────────────────────
+   ⠋ sports-odds           日本語アカウント  │     History        ←   180d →       kept (0: all)
+   ◆ pelican                                 │     Sessions       ←    30d →       kept unseen
+   + 2 recent                                │     Logs           ←    14d →       kept (0: all)
+                                             │     Backups        ←     50 →       kept (0: all)
+ ›   Policy                           order  │
+     Stats                                   │      Apply   nothing changed yet
+                                             │
+   + Add account                             │   2 differ from the defaults (d resets the field)
+   ↑ more above                              │
+  ↑↓ Navigate    Home/End Jump    ⏎ Edit    r Refresh    ? Keys    q Quit

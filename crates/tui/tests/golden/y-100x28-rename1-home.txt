@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   Account
+      / __ )/   |/_  __/ __ \/ | / /         │   ⊘ blocked
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   A very long account name that goes on and on,
+   /_____/_/  |_/_/  \____/_/ |_/            │   far past the width of the sidebar
+                                             │
+   Keep the conversation moving.             │   · #1 of 4 · normal · signed in (claude.ai)
+   Your Claude ╭────────────────────────────────────────────────────────────────────╮ (policy
+   One continuo│                                                                    │
+               │ Any name you like (an email, words, any script). Its profile,      │
+   / Search    │ sign-in, sessions and history stay as they are.                    │━━┃━━━  100%
+               │                                                                    │───┃──   71%
+     Overview  │ › A very long account name that goes on and on, far past the width │
+               │                                                                    │
+   Accounts    │  Rename  Enter    Cancel  Esc                                      │10:40 (in
+ › · A very lon╰────────────────────────────────────────────────────────────────────╯
+     and on, far past the width of the       │     refused by Anthropic, not only over the
+     sidebar                                 │     threshold
+   ★ 日本語アカウント         5h 42 · wk 63  │   Weekly      loses 24% in 3d 2h if unused
+   · jane.doe+claude@example.com       ⊘ 2d  │
+   ▿ acct4                          sign in  │   7 days      Mon Tue Wed Thu Fri Sat Sun
+                                             │     5h peak   ▅▅▅ ▇▇▇ ███ ▅▅▅ ▇▇▇ ▇▇▇ ███
+                                             │     weekly    ▂▂▂ ▃▃▃ ▄▄▄ ▄▄▄ ▅▅▅ ▆▆▆ ▆▆▆
+   + Add account                             │   Hops        2 in · 1 out · 2 refusals
+   ↓ more below                              │    ┃ Threshold   ╺━╸ Next account       1–21 of 22
+  Ctrl+U Clear    ⏎ Save    Esc Cancel

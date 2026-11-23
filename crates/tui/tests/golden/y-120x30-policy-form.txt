@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Policy
+      / __ )/   |/_  __/ __ \/ | / /         │   2 unsaved
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │     Mode           [smart]  order   how accounts are picked
+   /_____/_/  |_/_/  \____/_/ |_/            │   › 5-hour limit   ←    88% →       blocked at or above
+                                             │     Weekly limit   ←    95% →       blocked at or above
+   Keep the conversation moving.             │     Start reserve  ←    20% →       room for new work
+   Your Claude accounts.                     │     Plan factor    ←   1.5x →       x the next turn
+   One continuous conversation.              │     Wait in place  ←    20m →       wait if sooner
+                                             │     Min stay       ←    30m →       no ping-pong
+   / Search                                  │     Rebalance      ● on             after compaction
+                                             │     Usage poll     ←     0m →       every
+     sidebar                                 │     Bar usage      ○ off            after yours
+   ★ 日本語アカウント         5h 42 · wk 63  │     Full sync      ● on             every account
+   · jane.doe+claude@example.com       ⊘ 2d  │
+   ▿ acct4                          sign in  │   Storage  ───────────────────────────────────────────────────────────
+                                             │     History        ←   180d →       kept (0: all)
+   Sessions                               2  │     Sessions       ←    30d →       kept unseen
+   ⠋ sports-odds           日本語アカウント  │     Logs           ←    14d →       kept (0: all)
+   ◆ pelican                                 │     Backups        ←     50 →       kept (0: all)
+   + 2 recent                                │
+                                             │      Apply 2 changes   asks to confirm first
+ ›   Policy                           order  │
+     Stats                                   │   2 differ from the defaults (d resets the field)
+                                             │
+   + Add account                             │
+   ↑ more above                              │
+  ↑↓ Field    ←→ Adjust    0-9 Type    Home/End Jump    d Default    ⏎ Apply    Esc Done

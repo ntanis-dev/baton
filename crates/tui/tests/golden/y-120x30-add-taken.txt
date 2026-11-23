@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Stats
+      / __ )/   |/_  __/ __ \/ | / /         │   last 7 days
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   Oct 18 to Oct 25
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │   USAGE BY DAY  ──────────────────────────────────────────────────────
+   Keep the conversation moving.             │               Mon  Tue  Wed  Thu  Fri  Sat  Sun
+   Your Claude accounts.                     │   · A very long account name that goes on and on, far past the width
+   One continuous convers╭─ Add an account ───────────────────────────────────────────────────╮
+                         │                                                                    │
+   / Search              │ Any name you like (an email, words, any script). Baton makes its   │
+                         │ profile, then Claude Code's sign-in runs in this terminal.         │
+     sidebar             │                                                                    │
+   ★ 日本語アカウント    │ › ACCT4                                                            │
+   · jane.doe+claude@exam│                                                                    │
+   ▿ acct4               │  Add account  Enter    Cancel  Esc                                 │
+                         ╰────────────────────────────────────────────────────────────────────╯
+   Sessions                               2  │   ▿ acct4
+   ⠋ sports-odds           日本語アカウント  │     5h peak  ▁  0 ▁  0 ▂ 12 ▁  0 ▂  8 ▁  0 ▁  5
+   ◆ pelican                                 │     weekly   ▁  0 ▁  0 ▁  5 ▁  5 ▂ 11 ▂ 11 ▂ 18
+   + 2 recent                                │
+                                             │   ACTIVITY  ──────────────────────────────────────────────────────────
+     Policy                           order  │               Mon  Tue  Wed  Thu  Fri  Sat  Sun   Total
+ ›   Stats                                   │     Hops        ·    ·    1    1    ·    1    1       4
+                                             │     Refusals    ·    ·    ·    1    ·    ·    2       3
+ › + Add account                             │     Sessions    ·    1    ·   ✗  acct4 is the name of another account.
+   ↑ more above                              │    ★ Preferred   ▿ Last resort   · Normal   ⊘ Blocked       1–23 of 28
+  Ctrl+U Clear    ⏎ Save    Esc Cancel

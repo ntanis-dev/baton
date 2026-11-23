@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   Recent sessions
+      / __ )/   |/_  __/ __ \/ | / /         │
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   Recent sessions  2 in the last 7 days, newest
+   /_____/_/  |_/_/  \____/_/ |_/            │     first
+                                             │
+   Keep the conversation moving.             │   royal-flush  acct4 · 20h ago · 1 hop
+   Your Claude accounts.                     │   baton  A very long account name that goes on and
+   One continuous conversation.              │     on, far past the width of the sidebar · 3d ago
+                                             │     2 hops
+   / Search                                  │
+                                             │
+   · jane.doe+claude@example.com       ⊘ 2d  │
+   ▿ acct4                          sign in  │
+                                             │
+   Sessions                               2  │
+   ⠋ sports-odds           日本語アカウント  │
+   ◆ pelican                                 │
+ › + 2 recent                                │
+                                             │
+     Policy                           order  │
+     Stats                                   │
+                                             │
+   + Add account                             │
+   ↑ more above                              │    ⠋ Working   ● Idle   ◆ Wait / move   ○ Recent
+  ↑↓ Navigate    Home/End Jump    ⏎ Expand    r Refresh    ? Keys    q Quit

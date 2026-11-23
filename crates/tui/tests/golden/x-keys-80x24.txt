@@ -1,0 +1,23 @@
+   BATON                 │
+                         │   Overview
+   / ╭─ Keys ─────────────────────────────────────────────────────────────╮
+     │                                                                    │
+ ›   │ ↑ ↓        Move through the list, or the fields of a form          │
+     │ ⏎          The selection's actions; edit the policy; take a dialog │
+   Ac│ ← →        Fold and unfold the sessions; change a setting          │──
+   · │ 0-9        Type a number into a setting (Backspace takes one back) │
+   ★ │ PgUp PgDn  Scroll the view; a number setting by ten steps          │
+   · │ Home End   The first and the last                                  │
+   ▿ │ /          Filter the list by name                                 │──
+     │ r          Ask the usage now: the account's, else every account's  │
+   Se│ d          A setting back to its default                           │m
+   ⠋ │ Esc        Leave a dialog, a form or the filter                    │
+   ◆ │ Ctrl+L     Draw the screen again                                   │
+   + │ ?          These keys                                              │
+     │ q          Quit (Ctrl+C from anywhere)                             │
+     │                                                                    │──
+     │  Close  Esc                                                        │t2
+     ╰────────────────────────────────────────────────────────────────────╯
+   + Add account         │   ◆ pelican                                  acct1
+                         │    ★ Preferred   ▿ Last resort          1–17 of 21
+  ↑↓ Scroll    Esc Close

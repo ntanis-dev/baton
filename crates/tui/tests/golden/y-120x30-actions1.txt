@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Account
+      / __ )/   |/_  __/ __ \/ | / /         │   ⊘ blocked
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   A very long account name that goes on and on, far past the width of
+   /_____/_/  |_/_/  \____/_/ |_/            │   the sidebar
+                         ╭─ Account actions ──────────────────────────────────────────────────╮
+   Keep the conversation │                                                                    │
+   Your Claude accounts. │ A very long account name that goes on and on, far past the width   │efaults)
+   One continuous convers│ of the sidebar                                                     │
+                         │                                                                    │ets 10:40 (40m)
+   / Search              │  › Rename                                                       e  │ets Wed 12:00 (3d 2h)
+                         │    Change mark                                                  m  │
+     Overview            │    Usage thresholds                                             t  │
+                         │    Refresh usage                                                r  │40m)
+   Accounts              │    Sign in again                                                s  │shold
+ › · A very long account │    Move down                                                    J  │
+     and on, far past the│    Delete account                                               d  │
+     sidebar             │                                                                    │
+   ★ 日本語アカウント    │  Close  Esc                                                        │
+   · jane.doe+claude@exam╰────────────────────────────────────────────────────────────────────╯
+   ▿ acct4                          sign in  │   Hops        2 in · 1 out · 2 refusals
+                                             │   Sessions    pelican
+   Sessions                               2  │
+   ⠋ sports-odds           日本語アカウント  │
+                                             │
+   + Add account                             │
+   ↓ more below                              │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ↑↓ Choose    ⏎ Select    Esc Close

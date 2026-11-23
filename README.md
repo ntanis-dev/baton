@@ -351,11 +351,16 @@ cargo fmt --check
 cargo xtask lock-age                                     # every crate in Cargo.lock is at least 14 days old
 cargo deny check                                         # advisories, licences, duplicates and sources
 cargo run -p baton-tui --example menu_demo               # the menu on fixture accounts; no real profiles or sign-ins
+BATON_GOLDEN=write cargo test -p baton-tui --test golden # after a change to what the menu draws: then read git diff
 ```
 
 A build made while developing (`cargo run`, `cargo build`) runs only with `BATON_HOME` set, so it cannot change your
 own accounts and `~/.claude` by accident; point it at a scratch folder. What `cargo install` builds is not held back.
 CI lints and tests on Linux, Windows and macOS.
+
+Every frame of the menu is on record under `crates/tui/tests/golden`, and a test holds what is drawn against it, so
+a change to a screen shows as a difference to read. What the tests cannot see, the real Claude Code, is gone through
+by hand before a release: [docs/smoke-test.md](docs/smoke-test.md).
 
 The workspace is a handful of crates under `crates/`: `core` (accounts, policy, usage, sessions and the text
 layout), `profile` (the profiles and their shared files), `claude` (running Claude Code and the usage check),

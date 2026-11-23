@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Account
+      / __ )/   |/_  __/ __ \/ | / /         │   ⊘ blocked
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   A very long account name that goes on and on, far past the width of
+   /_____/_/  |_/_/  \____/_/ |_/            │   the sidebar
+                                             │
+   Keep the conversation moving.             │   · #1 of 4 · normal · signed in (claude.ai)
+   Your Claude accounts.                     │   Thresholds  5-hour 90% · weekly 95%  (policy defaults)
+   One continuous convers╭────────────────────────────────────────────────────────────────────╮
+                         │                                                                    │ets 10:40 (40m)
+   / Search              │ Its profile folder stays (it holds that account's sign-in); delete │ets Wed 12:00 (3d 2h)
+                         │ it yourself when you no longer need it.                            │
+     Overview            │ A session runs on A very long account name that goes on and on,    │
+                         │ far past the width of the sidebar now; it keeps running.           │40m)
+   Accounts              │                                                                    │shold
+ › · A very long account │  Yes  y    No  n                                                   │
+     and on, far past the╰────────────────────────────────────────────────────────────────────╯
+     sidebar                                 │   7 days      Mon Tue Wed Thu Fri Sat Sun
+   ★ 日本語アカウント         5h 42 · wk 63  │     5h peak   ▅▅▅ ▇▇▇ ███ ▅▅▅ ▇▇▇ ▇▇▇ ███
+   · jane.doe+claude@example.com       ⊘ 2d  │     weekly    ▂▂▂ ▃▃▃ ▄▄▄ ▄▄▄ ▅▅▅ ▆▆▆ ▆▆▆
+   ▿ acct4                          sign in  │   Hops        2 in · 1 out · 2 refusals
+                                             │   Sessions    pelican
+   Sessions                               2  │
+   ⠋ sports-odds           日本語アカウント  │
+                                             │
+   + Add account                             │
+   ↓ more below                              │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ←→ Choose    ⏎ Select    Esc Cancel

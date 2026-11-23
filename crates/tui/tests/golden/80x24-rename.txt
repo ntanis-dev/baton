@@ -1,0 +1,23 @@
+   BATON                 │
+                         │   acct2
+   / Search              │   available
+                         │
+     Overview            │   ★ #2 of 4 · preferred · signed in (claude.ai)
+                         │     ╺━╸ next work goes here
+   Ac╭─ Rename acct2 ─────────────────────────────────────────────────────╮
+   · │                                                                    │
+ › ★ │ Any name you like (an email, words, any script). Its profile,      │
+   · │ sign-in, sessions and history stay as they are.                    │2%
+   ▿ │                                                                    │3%
+     │ › acct2                                                            │1%
+   Se│                                                                    │
+   ⠋ │  Rename  Enter    Cancel  Esc                                      │is
+   ◆ ╰────────────────────────────────────────────────────────────────────╯
+   + 2 recent            │   Usage poll  polled 12m ago
+                         │   ✓ Available now
+     Policy       smart  │   Weekly      loses 32% in 4d if unused
+     Stats               │
+                         │   7 days      Mon Tue Wed Thu Fri Sat Sun
+   + Add account         │     5h peak   ▂▂▂ ▄▄▄ ▆▆▆ ▃▃▃ ▅▅▅ ▅▅▅ ▄▄▄
+                         │    ┃ Threshold   ╺━╸ Next account       1–17 of 20
+  Ctrl+U Clear    ⏎ Save    Esc Cancel

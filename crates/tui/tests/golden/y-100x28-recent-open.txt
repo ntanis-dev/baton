@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   baton
+      / __ )/   |/_  __/ __ \/ | / /         │   recent
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   on A very long account name that goes on and on,
+   /_____/_/  |_/_/  \____/_/ |_/            │     far past the width of the sidebar · ended
+                                             │   Folder    /work/baton
+   Keep the conversation moving.             │   Session   2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+   Your Claude accounts.                     │   Started   Thu 09:00 (3d 1h ago)
+   One continuous conversation.              │   Now       between turns
+                                             │   Per turn  not enough turns measured yet
+   / Search                                  │   Burn      no recent readings
+                                             │
+                                             │   Hops
+   Sessions                               2  │     09:00 jane.doe+claude@example.com → A very
+   ⠋ sports-odds           日本語アカウント  │           long account name that goes on and on,
+   ◆ pelican                                 │           far past the width of the sidebar
+     ○ royal-flush                    acct4  │           planned
+ ›   ○ baton                                 │     10:01 jane.doe+claude@example.com → A very
+   - hide 2 recent                           │           long account name that goes on and on,
+                                             │           far past the width of the sidebar
+     Policy                           order  │           refusal
+     Stats                                   │
+                                             │
+   + Add account                             │
+   ↑ more above                              │    ⠋ Working   ● Idle   ◆ Wait / move   ○ Recent
+  ↑↓ Navigate    Home/End Jump    r Refresh    ? Keys    q Quit

@@ -1,0 +1,44 @@
+                                             │
+       ____  ___  __________  _   __         │   acct1
+      / __ )/   |/_  __/ __ \/ | / /         │   ⊘ blocked
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   · #1 of 4 · normal · signed in (claude.ai)
+   /_____/_/  |_/_/  \____/_/ |_/            │   Thresholds  5-hour 90% · weekly 95%  (policy defaults)
+                                             │
+   Keep the conversation moving.             │   5-hour  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┃━━━━  100%  resets 10:40 (40m)
+   Your Claude accounts.                     │   weekly  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━─────────┃──   71%  resets Wed 12:00 (3d 2h)
+   One continuous conversation.              │   Read        from session 2m ago
+                                             │   Usage poll  polled 12m ago
+   / Search                                  │   ⊘ Blocked by the 5-hour limit until 10:40 (in 40m)
+                                             │     refused by Anthropic, not only over the threshold
+     Overview                                │   Weekly      loses 24% in 3d 2h if unused
+                                             │
+   Accounts                               4  │   7 days      Mon Tue Wed Thu Fri Sat Sun
+ › · acct1                            ⊘ 40m  │     5h peak   ▅▅▅ ▇▇▇ ███ ▅▅▅ ▇▇▇ ▇▇▇ ███
+   ★ acct2                    5h 42 · wk 63  ╭─ Remove acct1 from Baton? ─────────────────────────────────────────╮
+   · acct3                             ⊘ 2d  │                                                                    │
+   ▿ acct4                          sign in  │ Its profile folder stays (it holds that account's sign-in); delete │
+                                             │ it yourself when you no longer need it.                            │
+   Sessions                               2  │ A session runs on acct1 now; it keeps running.                     │
+   ⠋ sports-odds                      acct2  │                                                                    │
+   ◆ pelican                          acct1  │  Yes  y    No  n                                                   │
+   + 2 recent                                ╰────────────────────────────────────────────────────────────────────╯
+                                             │
+     Policy                           smart  │
+     Stats                                   │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+   + Add account                             │
+                                             │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ←→ Choose    ⏎ Select    Esc Cancel

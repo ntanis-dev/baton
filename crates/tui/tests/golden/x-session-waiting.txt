@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   pelican
+      / __ )/   |/_  __/ __ \/ | / /         │   live
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   on acct1 · waiting for acct1 until 10:40
+   /_____/_/  |_/_/  \____/_/ |_/            │   Folder    /work/pelican
+                                             │   Session   9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+   Keep the conversation moving.             │   Started   07:00 (3h ago)
+   Your Claude accounts.                     │   Model     claude-opus-5-5
+   One continuous conversation.              │   Now       turn ended on rate_limit
+                                             │   Per turn  not enough turns measured yet
+   / Search                                  │   Burn      no recent readings
+                                             │
+   · acct1                            ⊘ 40m  │   Hops  none in the last 7 days
+   ★ acct2                         ⊘ 1h 10m  │
+   · acct3                             ⊘ 2d  │
+   ▿ acct4                          sign in  │
+                                             │
+   Sessions                               2  │
+   ⠋ sports-odds                      acct2  │
+ › ◆ pelican                          acct1  │
+   + 2 recent                                │
+                                             │
+     Policy                           smart  │
+     Stats                                   │
+                                             │
+   + Add account                             │
+   ↑ more above                              │    ⠋ Working   ● Idle   ◆ Wait / move   ○ Recent
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    r Refresh    ? Keys    q Quit

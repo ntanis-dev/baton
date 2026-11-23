@@ -1,0 +1,23 @@
+   BATON                 │
+                         │   sports-odds
+   / Search              │   live
+                         │
+     Overview            │   on acct2 · live under baton
+                         │   Folder    /work/sports-odds
+   Accounts           4  │   Session   6f0b2d4e-1c3a-4b5d-8e9f-0a1b2c3d4e5f
+   · acct1        ⊘ 40m  │   Started   07:00 (3h ago)
+   ★ acct2       wk 63%  │   Model     claude-opus-5-5
+   · acct3         ⊘ 2d  │   Now       ⠋ working · workflow running, 2
+   ▿ acct4      sign in  │             subagents · 1 background shell
+                         │             no planned hop while these run; only a
+   Sessions           2  │             refusal moves it
+ › ⠋ sports-odds  acct2  │   Per turn  3% of 5h · 0.5% of weekly  (5 turns)
+   ◆ pelican      acct1  │   Burn      18%/h 5h · 3%/h weekly
+   + 2 recent            │
+                         │   Hops
+     Policy       smart  │     08:01 acct1 → acct2  refusal
+     Stats               │
+                         │
+   + Add account         │
+                         │    ⠋ Working   ● Idle   ◆ Wait / move   ○ Recent
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    r Refresh    ? Keys    q Quit

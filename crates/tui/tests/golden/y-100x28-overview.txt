@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │   Overview
+      / __ )/   |/_  __/ __ \/ | / /         │   Refresh on request
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   1 ready   /   4 accounts   /   2 live sessions
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │   NEXT ACCOUNT  ──────────────────────────────────
+   Keep the conversation moving.             │   日本語アカウント
+   Your Claude accounts.                     │   first open account in order
+   One continuous conversation.              │
+                                             │   ACCOUNTS  ──────────────────────────────────────
+   / Search                                  │   Account         5-hour    Weekly    Status
+                                             │   A very long     ━━━ 100%  ━━─  71%  Back in 40m
+ ›   Overview                                │   account name
+                                             │   that goes on
+   Accounts                               4  │   and on, far
+   · A very long account name that goes on   │   past the width
+     and on, far past the width of the       │   of the sidebar
+     sidebar                                 │   日本語アカウン  ━──  42%  ━━─  63%  Ready
+   ★ 日本語アカウント         5h 42 · wk 63  │   ト
+   · jane.doe+claude@example.com       ⊘ 2d  │   jane.           ───  12%  ━━━  97%  Back in 2d
+   ▿ acct4                          sign in  │   doe+claude@exa
+                                             │   mple.com
+                                             │   acct4           ───   5%  ━──  18%  Sign in
+   + Add account                             │
+   ↓ more below                              │    ★ Preferred   ▿ Last resort          1–21 of 29
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    PgUp/Dn Scroll    r Refresh    ? Keys    q Quit

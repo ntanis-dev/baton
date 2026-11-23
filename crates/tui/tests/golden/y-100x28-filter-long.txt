@@ -1,0 +1,27 @@
+                                             │
+       ____  ___  __________  _   __         │
+      / __ )/   |/_  __/ __ \/ | / /         │
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │
+   Keep the conversation moving.             │
+   Your Claude accounts.                     │
+   One continuous conversation.              │
+                                             │
+   / oes not fit in the search box at all    │
+                                             │
+   Nothing matches.                          │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+   + Add account                             │
+                                             │
+  ↓ Results    ⏎ Done    Ctrl+U Clear    Esc Cancel

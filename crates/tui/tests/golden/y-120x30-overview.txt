@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Overview
+      / __ )/   |/_  __/ __ \/ | / /         │   Refresh on request
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   1 ready   /   4 accounts   /   2 live sessions
+   /_____/_/  |_/_/  \____/_/ |_/            │
+                                             │   NEXT ACCOUNT  ──────────────────────────────────────────────────────
+   Keep the conversation moving.             │   日本語アカウント
+   Your Claude accounts.                     │   first open account in order
+   One continuous conversation.              │
+                                             │   ACCOUNTS  ──────────────────────────────────────────────────────────
+   / Search                                  │   Account                         5-hour    Weekly    Status
+                                             │   A very long account name that   ━━━ 100%  ━━─  71%  Back in 40m
+ ›   Overview                                │   goes on and on, far past the
+                                             │   width of the sidebar
+   Accounts                               4  │   日本語アカウント                ━──  42%  ━━─  63%  Ready
+   · A very long account name that goes on   │   jane.doe+claude@example.com     ───  12%  ━━━  97%  Back in 2d
+     and on, far past the width of the       │   acct4                           ───   5%  ━──  18%  Sign in
+     sidebar                                 │
+   ★ 日本語アカウント         5h 42 · wk 63  │   LIVE SESSIONS  ─────────────────────────────────────────────────────
+   · jane.doe+claude@example.com       ⊘ 2d  │   ⠋ sports-odds                                       日本語アカウント
+   ▿ acct4                          sign in  │     Working · workflow running
+                                             │   ◆ pelican
+   Sessions                               2  │     Moving to 日本語アカウント
+   ⠋ sports-odds           日本語アカウント  │
+                                             │   TODAY  ─────────────────────────────────────────────────────────────
+   + Add account                             │   1 handoff  ·  2 refusals
+   ↓ more below                              │    ★ Preferred   ▿ Last resort   · Normal   ⊘ Blocked
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    r Refresh    ? Keys    q Quit

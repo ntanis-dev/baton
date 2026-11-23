@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   acct1
+      / __ )/   |/_  __/ __ \/ | / /         │   ⊘ blocked
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   · #1 of 4 · normal · signed in (claude.ai)
+   /_____/_/  |_/_/  \____/_/ |_/            │   Thresholds  5-hour 90% · weekly 95%  (policy
+                                             │               defaults)
+   Keep the conversation moving.             │
+   Your Claude accounts.                     │   5-hour  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┃━━━  100%
+   One continuous conversation.              │   weekly  ━━━━━━━━━━━━━━━━━━━━━━━━───────┃──   71%
+               ╭─ Remove acct1 from Baton? ─────────────────────────────────────────╮
+   / Search    │                                                                    │
+               │ Its profile folder stays (it holds that account's sign-in); delete │10:40 (in
+     Overview  │ it yourself when you no longer need it.                            │
+               │ A session runs on acct1 now; it keeps running.                     │r the
+   Accounts    │                                                                    │
+ › · acct1     │  Yes  y    No  n                                                   │used
+   ★ acct2     ╰────────────────────────────────────────────────────────────────────╯
+   · acct3                             ⊘ 2d  │   7 days      Mon Tue Wed Thu Fri Sat Sun
+   ▿ acct4                          sign in  │     5h peak   ▅▅▅ ▇▇▇ ███ ▅▅▅ ▇▇▇ ▇▇▇ ███
+                                             │     weekly    ▂▂▂ ▃▃▃ ▄▄▄ ▄▄▄ ▅▅▅ ▆▆▆ ▆▆▆
+   Sessions                               2  │   Hops        2 in · 1 out · 2 refusals
+   ⠋ sports-odds                      acct2  │   Sessions    pelican
+   ◆ pelican                          acct1  │
+   + 2 recent                                │
+                                             │
+   + Add account                             │
+   ↓ more below                              │    ┃ Threshold   ╺━╸ Next account   ⊘ Blocked
+  ←→ Choose    ⏎ Select    Esc Cancel

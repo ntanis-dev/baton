@@ -1,0 +1,44 @@
+                                             │
+       ____  ___  __________  _   __         │   Policy
+      / __ )/   |/_  __/ __ \/ | / /         │   smart
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   › Mode           [smart]  order   smart picks by room and urgency; order fills one then next
+   /_____/_/  |_/_/  \____/_/ |_/            │     5-hour limit   ←    90% →       an account at or above it is blocked (default for all)
+                                             │     Weekly limit   ←    95% →       an account at or above it is blocked (default for all)
+   Keep the conversation moving.             │     Start reserve  ←    20% →       5-hour room an account needs to take new work
+   Your Claude accounts.                     │     Plan factor    ←   1.5x →       hop between turns when room < factor x next turn
+   One continuous conversation.              │     Wait in place  ←    20m →       a 5-hour refusal ending this soon waits instead
+                                             │     Min stay       ←    30m →       no planned hop, nor a hop back, sooner after arriving
+   / Search                                  │     Rebalance      ● on             rebalance at the cheap moment after a compaction
+                                             │     Usage poll     ←    30m →       ask every account's usage this often (0: on request)
+     Overview                                │     Bar usage      ○ off            add Baton's usage after your own status line
+                                             │     Full sync      ● on             keep what you set up the same on every account
+   Accounts                               4  │
+   · acct1                            ⊘ 40m  │   Storage  ───────────────────────────────────────────────────────────────────────────────────────────────────
+   ★ acct2                    5h 42 · wk 63  │     History        ←   180d →       months of history that ended longer ago go (0: none)
+   · acct3                             ⊘ 2d  │     Sessions       ←    30d →       records of conversations not seen this long go
+   ▿ acct4                          sign in  │     Logs           ←    14d →       wrappers' logs not written this long go (0: none)
+                                             │     Backups        ←     50 →       the newest kept, the older ones go (0: none go)
+   Sessions                               2  │
+   ⠋ sports-odds                      acct2  │      Apply   nothing changed yet
+   ◆ pelican                          acct1  │
+   + 2 recent                                │   all at their defaults
+                                             │
+ ›   Policy                           smart  │
+     Stats                                   │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+                                             │
+   + Add account                             │
+                                             │
+  ↑↓ Field    ←→ Adjust    0-9 Type    Home/End Jump    d Default    ⏎ Apply    Esc Done

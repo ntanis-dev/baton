@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   pelican
+      / __ )/   |/_  __/ __ \/ | / /         │   live
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │   on A very long account name that goes on and on, far past the width
+   /_____/_/  |_/_/  \____/_/ |_/            │     of the sidebar · moving to 日本語アカウント
+                                             │   Folder    /work/pelican
+   Keep the conversation moving.             │   Session   9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+   Your Claude accounts.                     │   Started   07:00 (3h ago)
+   One continuous conversation.              │   Model     claude-opus-5-5
+                                             │   Now       turn ended on rate_limit
+   / Search                                  │   Per turn  not enough turns measured yet
+                                             │   Burn      no recent readings
+     sidebar                                 │
+   ★ 日本語アカウント         5h 42 · wk 63  │   Hops  none in the last 7 days
+   · jane.doe+claude@example.com       ⊘ 2d  │
+   ▿ acct4                          sign in  │
+                                             │
+   Sessions                               2  │
+   ⠋ sports-odds           日本語アカウント  │
+ › ◆ pelican                                 │
+   + 2 recent                                │
+                                             │
+     Policy                           order  │
+     Stats                                   │
+                                             │
+   + Add account                             │
+   ↑ more above                              │    ⠋ Working   ● Idle   ◆ Wait / move   ○ Recent
+  ↑↓ Navigate    Home/End Jump    ⏎ Actions    r Refresh    ? Keys    q Quit

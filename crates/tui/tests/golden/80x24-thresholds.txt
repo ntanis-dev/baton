@@ -1,0 +1,23 @@
+   BATON                 │
+                         │   acct2
+   / Search              │   available
+                         │
+     Overview            │   ★ #2 of 4 · preferred · signed in (claude.ai)
+                         │     ╺━╸ next work goes here
+   Ac╭─ Thresholds of acct2 ──────────────────────────────────────────────╮
+   · │                                                                    │
+ › ★ │ At or above these, acct2 is blocked. "default" follows the policy. │
+   · │                                                                    │2%
+   ▿ │ › 5-hour  ← default (90%) →                                        │3%
+     │   Weekly  ← default (95%) →                                        │1%
+   Se│                                                                    │
+   ⠋ │  Save  Enter    Cancel  Esc                                        │is
+   ◆ ╰────────────────────────────────────────────────────────────────────╯
+   + 2 recent            │   Usage poll  polled 12m ago
+                         │   ✓ Available now
+     Policy       smart  │   Weekly      loses 32% in 4d if unused
+     Stats               │
+                         │   7 days      Mon Tue Wed Thu Fri Sat Sun
+   + Add account         │     5h peak   ▂▂▂ ▄▄▄ ▆▆▆ ▃▃▃ ▅▅▅ ▅▅▅ ▄▄▄
+                         │    ┃ Threshold   ╺━╸ Next account       1–17 of 20
+  ↑↓ Field    ←→ Adjust    0-9 Type    d Default    ⏎ Save    Esc Cancel

@@ -1,0 +1,29 @@
+                                             │
+       ____  ___  __________  _   __         │   Policy
+      / __ )/   |/_  __/ __ \/ | / /         │   2 unsaved
+     / __  / /| | / / / / / /  |/ /          │
+    / /_/ / ___ |/ / / /_/ / /|  /           │     Mode           [smart]  order   how accounts are picked
+   /_____/_/  |_/_/  \____/_/ |_/            │     5-hour limit   ←    91% →       blocked at or above
+                                             │     Weekly limit   ←    95% →       blocked at or above
+   Keep the conversation moving.             │     Start reserve  ←    20% →       room for new work
+   Your Claude accounts.                     │     Plan factor    ←   1.6x →       x the next turn
+   One continuous conversation.              │     Wait in place  ←    20m →       wait if sooner
+                         ╭─ Apply these policy settings? ─────────────────────────────────────╮
+   / Search              │                                                                    │tion
+                         │ 5-hour limit: 90% → 91%                                            │
+   · acct1               │ Plan factor: 1.5x → 1.6x                                           │
+   ★ acct2               │                                                                    │t
+   · acct3               │  Yes  y    No  n                                                   │
+   ▿ acct4               ╰────────────────────────────────────────────────────────────────────╯──────────────────────
+                                             │     History        ←   180d →       kept (0: all)
+   Sessions                               2  │     Sessions       ←    30d →       kept unseen
+   ⠋ sports-odds                      acct2  │     Logs           ←    14d →       kept (0: all)
+   ◆ pelican                          acct1  │     Backups        ←     50 →       kept (0: all)
+   + 2 recent                                │
+                                             │   ›  Apply 2 changes   asks to confirm first
+ ›   Policy                           smart  │
+     Stats                                   │   2 differ from the defaults (d resets the field)
+                                             │
+   + Add account                             │
+   ↑ more above                              │
+  ←→ Choose    ⏎ Select    Esc Cancel

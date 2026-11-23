@@ -5,7 +5,7 @@
 use baton_core::charts::spark;
 use baton_core::clock::{Ms, parse_ms};
 use baton_core::config::Mark;
-use baton_core::format::{TimeWords, other_limits, poll_words, read_words};
+use baton_core::format::{other_limits, poll_words, read_words};
 use baton_core::json::show;
 use baton_core::lines::{Facts, Line, Span, p, s, wrap_facts, wrap_line};
 use baton_core::policy::{AccountState, WindowState};
@@ -61,9 +61,6 @@ fn fixed2(amount: f64) -> String {
 /// The poll outcomes that are trouble.
 const POLL_TROUBLE: [&str; 4] = ["unavailable", "rate-limited", "timeout", "failed"];
 
-/// How the menu writes times: 24-hour moments and "12m".
-pub const MENU_TIME: TimeWords = TimeWords { time: when, span };
-
 /// Where each window's reading came from and how old it is, the plan's other limits (the weekly ones
 /// have bars of their own) and extra usage from the last poll, and the poller's last word on the
 /// account.
@@ -75,7 +72,7 @@ fn usage_lines(state: &State, a: &AccountState, width: usize) -> Vec<Line> {
     let reading = data.readings.get(&a.id);
     let words = |w: &WindowState| {
         w.read_at
-            .map(|read_at| read_words(w.source.as_deref(), Some(read_at), now, MENU_TIME))
+            .map(|read_at| read_words(w.source.as_deref(), Some(read_at), now))
     };
     let five = words(&a.windows.five_hour);
     let week = words(&a.windows.seven_day);
@@ -164,7 +161,7 @@ fn usage_lines(state: &State, a: &AccountState, width: usize) -> Vec<Line> {
         let said = if polling {
             "polling now".to_owned()
         } else {
-            poll_words(entry, now, MENU_TIME)
+            poll_words(entry, now)
         };
         let trouble = entry
             .and_then(|e| e.status.as_deref())

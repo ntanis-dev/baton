@@ -5,52 +5,16 @@
 //! model and name none: which accounts the operator has, and what they are called, is not the model's
 //! to know.
 
-use crate::clock::{Ms, local, same_local_day};
+use crate::clock::Ms;
+use crate::text::{span, when};
 use crate::window::Limit;
 
-/// The short names of the days, Sunday first.
-const DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-/// The short names of the months.
-const MONTHS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-
-/// A moment as the operator's clock shows it: `15:20` today, `Tue, Oct 27 15:20` on another day.
-pub fn clock(ms: Option<Ms>, now: Ms) -> String {
-    let Some(ms) = ms else {
-        return "an unknown time".to_owned();
-    };
-    let at = local(ms);
-    let time = format!("{:02}:{:02}", at.hour, at.minute);
-    if same_local_day(ms, now) {
-        return time;
+/// A moment as the operator's clock shows it ([`when`]); `an unknown time` when it is not known.
+fn at_time(at: Option<Ms>, now: Ms) -> String {
+    match at {
+        Some(at) => when(Some(at), now),
+        None => "an unknown time".to_owned(),
     }
-    format!(
-        "{}, {} {} {time}",
-        DAYS[at.weekday as usize % 7],
-        MONTHS[(at.month as usize + 11) % 12],
-        at.day
-    )
-}
-
-/// A span in words: `45 s`, `12 min`, `2 h 5 min`, `3 d 4 h`.
-pub fn duration(ms_left: Option<Ms>) -> String {
-    let Some(ms_left) = ms_left else {
-        return "unknown".to_owned();
-    };
-    let s = ((ms_left as f64 / 1000.0).round() as i64).max(0);
-    if s < 60 {
-        return format!("{s} s");
-    }
-    let m = (s as f64 / 60.0).round() as i64;
-    if m < 60 {
-        return format!("{m} min");
-    }
-    let h = m / 60;
-    if h < 48 {
-        return format!("{h} h {} min", m % 60);
-    }
-    format!("{} d {} h", h / 24, h % 24)
 }
 
 /// A limit by name: `5-hour limit`, `weekly limit`, `usage limit`.
@@ -61,7 +25,7 @@ fn limit_name(window: Option<Limit>) -> String {
 /// " (resets 15:20)" when the reset is known.
 fn resets(until: Option<Ms>, now: Ms) -> String {
     match until {
-        Some(until) if until != 0 => format!(" (resets {})", clock(Some(until), now)),
+        Some(until) if until != 0 => format!(" (resets {})", when(Some(until), now)),
         _ => String::new(),
     }
 }
@@ -141,7 +105,10 @@ pub fn hop_line(
     let why = hop_reason(reason, from, window, until, now);
     let tail = match seconds {
         Some(seconds) => {
-            format!(" in {seconds} s · Enter: now · any other key: stay on {from} · Ctrl+C: quit")
+            format!(
+                " in {} · Enter: now · any other key: stay on {from} · Ctrl+C: quit",
+                span(Some(seconds * 1000))
+            )
         }
         None => String::new(),
     };
@@ -163,40 +130,25 @@ pub fn wait_line(
         format!("baton: all {total} accounts at limit; {to} is first back")
     };
     let what = match window {
-        Some(window) => format!(", its {} window resets at {}", window.label(), clock(at, now)),
-        None => format!(" at {}", clock(at, now)),
+        Some(window) => format!(", its {} window resets at {}", window.label(), at_time(at, now)),
+        None => format!(" at {}", at_time(at, now)),
     };
     format!(
         "{lead}{what} (in {}); resuming there then · any key: stay here · Ctrl+C: quit",
-        duration(at.map(|at| at - now))
+        at.map_or_else(|| "an unknown time".to_owned(), |at| span(Some(at - now)))
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clock::{DAY, HOUR, MINUTE, local_ms};
+    use crate::clock::{HOUR, MINUTE, local_ms};
 
     #[test]
-    fn clocks() {
+    fn a_time_that_is_not_known_is_said_so() {
         let noon = local_ms(2026, 3, 10, 12, 0).unwrap();
-        assert_eq!(clock(Some(noon + 3 * HOUR + 20 * MINUTE), noon), "15:20");
-        assert_eq!(
-            clock(Some(local_ms(2026, 10, 27, 9, 5).unwrap()), noon),
-            "Tue, Oct 27 09:05"
-        );
-        assert_eq!(clock(None, noon), "an unknown time");
-    }
-
-    #[test]
-    fn durations() {
-        assert_eq!(duration(None), "unknown");
-        assert_eq!(duration(Some(-5)), "0 s");
-        assert_eq!(duration(Some(45_400)), "45 s");
-        assert_eq!(duration(Some(12 * MINUTE)), "12 min");
-        assert_eq!(duration(Some(2 * HOUR + 5 * MINUTE)), "2 h 5 min");
-        assert_eq!(duration(Some(47 * HOUR)), "47 h 0 min");
-        assert_eq!(duration(Some(3 * DAY + 4 * HOUR)), "3 d 4 h");
+        assert_eq!(at_time(Some(noon + 3 * HOUR + 20 * MINUTE), noon), "15:20");
+        assert_eq!(at_time(None, noon), "an unknown time");
     }
 
     #[test]
@@ -268,7 +220,7 @@ mod tests {
                 noon,
                 Some(10)
             ),
-            "baton: Work reached its 5-hour limit; moving this conversation to Spare in 10 s · Enter: now · any other key: stay on Work · Ctrl+C: quit"
+            "baton: Work reached its 5-hour limit; moving this conversation to Spare in 10s · Enter: now · any other key: stay on Work · Ctrl+C: quit"
         );
         assert_eq!(
             wait_line(
@@ -279,11 +231,11 @@ mod tests {
                 noon,
                 "all-blocked-wait"
             ),
-            "baton: all 3 accounts at limit; Spare is first back, its 5-hour window resets at 14:00 (in 2 h 0 min); resuming there then · any key: stay here · Ctrl+C: quit"
+            "baton: all 3 accounts at limit; Spare is first back, its 5-hour window resets at 14:00 (in 2h); resuming there then · any key: stay here · Ctrl+C: quit"
         );
         assert_eq!(
             wait_line(3, "Spare", None, Some(noon + 15 * MINUTE), noon, "reblocked"),
-            "baton: accounts refused again right after resuming; waiting before the next try at 12:15 (in 15 min); resuming there then · any key: stay here · Ctrl+C: quit"
+            "baton: accounts refused again right after resuming; waiting before the next try at 12:15 (in 15m); resuming there then · any key: stay here · Ctrl+C: quit"
         );
     }
 }

@@ -194,6 +194,7 @@ fn modal_content(modal: &Modal, theme: &Theme, inner: usize) -> Content {
             index,
             values,
             defaults,
+            typing,
         } => {
             let name = if account_name.is_empty() {
                 account
@@ -206,9 +207,11 @@ fn modal_content(modal: &Modal, theme: &Theme, inner: usize) -> Content {
             out.push(Vec::new());
             for (i, label) in ["5-hour", "Weekly"].into_iter().enumerate() {
                 let at = i == *index;
-                let value = match values[i] {
-                    Some(v) => s(format!("{}%", percent(v)), "bold"),
-                    None => s(format!("default ({}%)", percent(defaults[i])), "muted"),
+                let value = match (typing.as_deref().filter(|_| at), values[i]) {
+                    // What is being typed, as it was typed.
+                    (Some(text), _) => s(format!("{text}%"), "warn bold underline"),
+                    (None, Some(v)) => s(format!("{}%", percent(v)), "bold"),
+                    (None, None) => s(format!("default ({}%)", percent(defaults[i])), "muted"),
                 };
                 out.push(vec![
                     s(
@@ -258,6 +261,57 @@ fn modal_content(modal: &Modal, theme: &Theme, inner: usize) -> Content {
                 lines: out,
                 targets,
                 buttons: None,
+            }
+        }
+        ModalKind::Keys => {
+            let both = |a: &str, b: &str| format!("{a} {b}");
+            let rows: [(String, &str); 13] = [
+                (
+                    both(g.up, g.down),
+                    "Move through the list, or the fields of a form",
+                ),
+                (
+                    g.enter.to_owned(),
+                    "The selection's actions; edit the policy; take a dialog",
+                ),
+                (
+                    both(g.left, g.right),
+                    "Fold and unfold the sessions; change a setting",
+                ),
+                (
+                    "0-9".to_owned(),
+                    "Type a number into a setting (Backspace takes one back)",
+                ),
+                (
+                    "PgUp PgDn".to_owned(),
+                    "Scroll the view; a number setting by ten steps",
+                ),
+                ("Home End".to_owned(), "The first and the last"),
+                ("/".to_owned(), "Filter the list by name"),
+                (
+                    "r".to_owned(),
+                    "Ask the usage now: the account's, else every account's",
+                ),
+                ("d".to_owned(), "A setting back to its default"),
+                ("Esc".to_owned(), "Leave a dialog, a form or the filter"),
+                ("Ctrl+L".to_owned(), "Draw the screen again"),
+                ("?".to_owned(), "These keys"),
+                ("q".to_owned(), "Quit (Ctrl+C from anywhere)"),
+            ];
+            let wide = rows.iter().map(|(key, _)| cells(key)).max().unwrap_or(0) + 2;
+            for (key, what) in rows {
+                let pad = " ".repeat(wide.saturating_sub(cells(&key)));
+                lines.extend(wrap_line(
+                    &[s(format!("{key}{pad}"), "accent bold"), p(what)],
+                    inner,
+                    wide,
+                ));
+            }
+            Content {
+                title,
+                lines,
+                targets,
+                buttons: Some(vec![Button::new("Esc", "Close", Key::Escape)]),
             }
         }
         ModalKind::Input { value, cursor, .. } => {

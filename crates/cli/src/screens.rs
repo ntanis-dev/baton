@@ -9,7 +9,7 @@ use baton_claude::ask::{choices, value_words};
 use baton_claude::poller::PollResult;
 use baton_core::clock::{Ms, parse_ms};
 use baton_core::config::{Account, Config, Mark};
-use baton_core::format::{TEXT_TIME, poll_line_of, poll_words};
+use baton_core::format::{poll_line_of, poll_words};
 use baton_core::json::show;
 use baton_core::lines::{Line, p, s, spread, wrap_line};
 use baton_core::stats::Stats;
@@ -23,7 +23,7 @@ use baton_tui::data::MenuData;
 use baton_tui::layout::Size;
 use baton_tui::state::{Auth, Init, State, initial_state};
 use baton_tui::tree::mark_icon;
-use baton_tui::views::account::{MENU_TIME, account_body};
+use baton_tui::views::account::account_body;
 use baton_tui::views::common::reason_words;
 use baton_tui::views::overview::overview_body;
 use baton_tui::views::stats::stats_body;
@@ -778,7 +778,7 @@ pub fn status_screen(term: &Terminal, data: MenuData) -> Vec<Line> {
     let words = |id: &str| {
         let entry = data.poll.as_ref()?.state.accounts.get(id)?;
         let status = entry.status.as_deref().filter(|status| !status.is_empty())?;
-        (status != "ok").then(|| poll_words(Some(entry), state.now, MENU_TIME))
+        (status != "ok").then(|| poll_words(Some(entry), state.now))
     };
     let trouble: Vec<Line> = data
         .states
@@ -903,7 +903,7 @@ pub fn refresh_screen(term: &Terminal, results: &[PollResult], now: Ms) -> Vec<L
                 )
             }
             "unknown" => "not one of Baton's accounts".to_owned(),
-            _ => poll_words(Some(&result.entry()), now, TEXT_TIME),
+            _ => poll_words(Some(&result.entry()), now),
         };
         let kind = if result.status == "unknown" {
             "fail"

@@ -1,16 +1,17 @@
-//! Readable text (and the JSON shapes) for the CLI. The menu uses the same words with its own way of
-//! writing times.
+//! Readable text (and the JSON shapes) for the CLI and the menu. Times read one way everywhere
+//! ([`crate::text::when`], [`crate::text::span`]), and the JSON carries moments and numbers, never
+//! text that was made for a screen.
 
 use serde_json::{Value, json};
 
 use crate::clock::{MINUTE, Ms, iso, iso_opt, parse_ms};
 use crate::config::Policy;
-use crate::json::{Object, num, opt_num, show};
+use crate::json::{Object, num, opt_num};
 use crate::paths::profile_dir;
 use crate::policy::{AccountState, WindowState, pick_start};
 use crate::poll::{PollEntry, kind_words};
-use crate::prompts::{clock, duration};
 use crate::state::{PollSnapshot, Snapshot};
+use crate::text::{span, when};
 use crate::usage::{Meter, Reading};
 
 /// What to say when the operator has not added an account yet.
@@ -19,90 +20,30 @@ pub const NO_ACCOUNTS: &str = "No accounts yet: add one with baton account add <
 /// What to say when no baton instance runs to poll the usage.
 pub const NO_POLLER: &str = "no baton running: usage is checked while baton or baton view runs";
 
-/// How times read: a moment (given the time now) and a span.
-#[derive(Clone, Copy, Debug)]
-pub struct TimeWords {
-    /// A moment in words.
-    pub time: fn(Option<Ms>, Ms) -> String,
-    /// A span in words.
-    pub span: fn(Option<Ms>) -> String,
-}
-
-/// The CLI's clock and durations; the menu passes its own (24-hour times, "12m").
-pub const TEXT_TIME: TimeWords = TimeWords {
-    time: clock,
-    span: duration,
-};
-
-/// A percentage to one decimal: `42%`, `42.5%`, `?` when there is none.
-fn pct(n: Option<f64>) -> String {
-    match n {
-        Some(n) => format!("{}%", show((n * 10.0).round() / 10.0)),
-        None => "?".to_owned(),
-    }
-}
-
-/// How long ago `t` was: `never`, `just now`, `12 min ago`.
-fn ago(t: Option<Ms>, now: Ms, words: TimeWords) -> String {
+/// How long ago `t` was: `never`, `just now`, `12m ago`.
+fn ago(t: Option<Ms>, now: Ms) -> String {
     match t {
         None => "never".to_owned(),
         Some(t) if now - t < MINUTE => "just now".to_owned(),
-        Some(t) => format!("{} ago", (words.span)(Some(now - t))),
+        Some(t) => format!("{} ago", span(Some(now - t))),
     }
 }
 
 /// Where a reading came from, and how old it is: "polled 12m ago" (the usage poller), "from session 2m
 /// ago" (a session's status line).
-pub fn read_words(source: Option<&str>, read_at: Option<Ms>, now: Ms, words: TimeWords) -> String {
+pub fn read_words(source: Option<&str>, read_at: Option<Ms>, now: Ms) -> String {
     let Some(at) = read_at else {
         return "never read".to_owned();
     };
     match source {
-        Some("poll") => format!("polled {}", ago(Some(at), now, words)),
-        Some("statusline") => format!("from session {}", ago(Some(at), now, words)),
-        _ => format!("read {}", ago(Some(at), now, words)),
+        Some("poll") => format!("polled {}", ago(Some(at), now)),
+        Some("statusline") => format!("from session {}", ago(Some(at), now)),
+        _ => format!("read {}", ago(Some(at), now)),
     }
 }
 
-/// One window of an account for `baton status --json`, with a line of text.
-fn window_view(w: &WindowState, now: Ms) -> Value {
-    let text = match w.used {
-        None if w.absent => "no such limit on this plan".to_owned(),
-        None if w.reset => format!(
-            "reset{}, last {}",
-            if w.stale {
-                " (reading older than the window)"
-            } else {
-                ""
-            },
-            read_words(w.source.as_deref(), w.read_at, now, TEXT_TIME)
-        ),
-        None => "not measured yet".to_owned(),
-        Some(used) => {
-            let own = w
-                .label
-                .as_deref()
-                .map(|label| format!(" ({label}'s own limit)"))
-                .unwrap_or_default();
-            let resets = w
-                .resets_at
-                .filter(|at| *at != 0)
-                .map(|at| {
-                    format!(
-                        " · resets {} (in {})",
-                        clock(Some(at), now),
-                        duration(Some(at - now))
-                    )
-                })
-                .unwrap_or_default();
-            format!(
-                "{} of {}%{own}{resets} · {}",
-                pct(Some(used)),
-                show(w.threshold),
-                read_words(w.source.as_deref(), w.read_at, now, TEXT_TIME)
-            )
-        }
-    };
+/// One window of an account for `baton status --json`: moments and numbers, no text.
+fn window_view(w: &WindowState) -> Value {
     let mut out = Object::new();
     out.insert("used".to_owned(), opt_num(w.used));
     out.insert("threshold".to_owned(), num(w.threshold));
@@ -121,17 +62,16 @@ fn window_view(w: &WindowState, now: Ms) -> Value {
     out.insert("blocked".to_owned(), json!(w.blocked));
     out.insert("rejected".to_owned(), json!(w.rejected));
     out.insert("rejectedUntil".to_owned(), json!(iso_opt(w.rejected_until)));
-    out.insert("text".to_owned(), json!(text));
     Value::Object(out)
 }
 
 /// The poller's last word on an account, in words.
-pub fn poll_words(entry: Option<&PollEntry>, now: Ms, words: TimeWords) -> String {
+pub fn poll_words(entry: Option<&PollEntry>, now: Ms) -> String {
     let Some((entry, status)) = entry.and_then(|e| Some((e, e.status.as_deref().filter(|s| !s.is_empty())?)))
     else {
         return "not polled yet".to_owned();
     };
-    let when = ago(entry.at.as_deref().and_then(parse_ms), now, words);
+    let asked = ago(entry.at.as_deref().and_then(parse_ms), now);
     let reason = entry
         .reason
         .as_deref()
@@ -139,22 +79,18 @@ pub fn poll_words(entry: Option<&PollEntry>, now: Ms, words: TimeWords) -> Strin
         .map(|r| format!(": {r}"))
         .unwrap_or_default();
     match status {
-        "ok" => format!("polled {when}"),
-        "unavailable" => format!("usage unavailable{reason} ({when})"),
+        "ok" => format!("polled {asked}"),
+        "unavailable" => format!("usage unavailable{reason} ({asked})"),
         "rate-limited" => {
             let again = match entry.backoff_until.as_deref().and_then(parse_ms) {
-                Some(until) => format!(
-                    "{} (in {})",
-                    (words.time)(Some(until), now),
-                    (words.span)(Some(until - now))
-                ),
+                Some(until) => format!("{} (in {})", when(Some(until), now), span(Some(until - now))),
                 None => "later".to_owned(),
             };
-            format!("usage endpoint rate limited ({when}); asks again {again}")
+            format!("usage endpoint rate limited ({asked}); asks again {again}")
         }
         "signed-out" => "signed out: not polled".to_owned(),
-        "timeout" => format!("poll timed out ({when})"),
-        other => format!("poll {other}{reason} ({when})"),
+        "timeout" => format!("poll timed out ({asked})"),
+        other => format!("poll {other}{reason} ({asked})"),
     }
 }
 
@@ -200,11 +136,11 @@ pub fn poll_line_of(
         return Some(format!("Usage poll: {NO_POLLER}."));
     };
     let next = match poll.next_at.filter(|at| *at != 0) {
-        Some(at) => format!("next {} (in {})", clock(Some(at), now), duration(Some(at - now))),
+        Some(at) => format!("next {} (in {})", when(Some(at), now), span(Some(at - now))),
         None => "only on request (usagePollMinutes 0)".to_owned(),
     };
     let last = match poll.state.last_run_at.as_deref().filter(|at| !at.is_empty()) {
-        Some(at) => format!("last {}", clock(parse_ms(at), now)),
+        Some(at) => format!("last {}", when(parse_ms(at), now)),
         None => "none yet".to_owned(),
     };
     let running = match &poll.state.running {
@@ -219,7 +155,7 @@ pub fn poll_line_of(
     };
     let by = format!("by {} (pid {})", kind_words(&holder.kind), holder.pid);
     let schedule = if every > 0.0 {
-        format!("every {} min, ", show(every))
+        format!("every {}, ", span(Some((every * MINUTE as f64) as Ms)))
     } else {
         String::new()
     };
@@ -271,14 +207,14 @@ pub fn status_view(snapshot: &Snapshot) -> Value {
                 "profile".to_owned(),
                 json!(profile_dir(&snapshot.paths, &s.id).to_string_lossy()),
             );
-            out.insert("five_hour".to_owned(), window_view(&s.windows.five_hour, now));
-            out.insert("seven_day".to_owned(), window_view(&s.windows.seven_day, now));
+            out.insert("five_hour".to_owned(), window_view(&s.windows.five_hour));
+            out.insert("seven_day".to_owned(), window_view(&s.windows.seven_day));
             out.insert("blocked".to_owned(), json!(s.blocked));
             out.insert("blockedBy".to_owned(), json!(s.blocked_by));
             // Blocked by nothing but these models' own limits: other models still run here.
             if !s.limited_models.is_empty() {
                 out.insert("limitedModels".to_owned(), json!(s.limited_models));
-                out.insert("week".to_owned(), window_view(&s.weekly_all, now));
+                out.insert("week".to_owned(), window_view(&s.weekly_all));
             }
             out.insert(
                 "availableAt".to_owned(),
@@ -352,18 +288,15 @@ mod tests {
     fn where_a_reading_came_from() {
         let now = 10 * HOUR;
         assert_eq!(
-            read_words(Some("poll"), Some(now - 12 * MINUTE), now, TEXT_TIME),
-            "polled 12 min ago"
+            read_words(Some("poll"), Some(now - 12 * MINUTE), now),
+            "polled 12m ago"
         );
         assert_eq!(
-            read_words(Some("statusline"), Some(now - 5000), now, TEXT_TIME),
+            read_words(Some("statusline"), Some(now - 5000), now),
             "from session just now"
         );
-        assert_eq!(
-            read_words(None, Some(now - 2 * HOUR), now, TEXT_TIME),
-            "read 2 h 0 min ago"
-        );
-        assert_eq!(read_words(Some("poll"), None, now, TEXT_TIME), "never read");
+        assert_eq!(read_words(None, Some(now - 2 * HOUR), now), "read 2h ago");
+        assert_eq!(read_words(Some("poll"), None, now), "never read");
     }
 
     #[test]
@@ -375,39 +308,36 @@ mod tests {
             reason: Some("why".to_owned()),
             ..PollEntry::default()
         };
-        assert_eq!(poll_words(None, now, TEXT_TIME), "not polled yet");
+        assert_eq!(poll_words(None, now), "not polled yet");
+        assert_eq!(poll_words(Some(&PollEntry::default()), now), "not polled yet");
+        assert_eq!(poll_words(Some(&entry("ok")), now), "polled 5m ago");
         assert_eq!(
-            poll_words(Some(&PollEntry::default()), now, TEXT_TIME),
-            "not polled yet"
-        );
-        assert_eq!(poll_words(Some(&entry("ok")), now, TEXT_TIME), "polled 5 min ago");
-        assert_eq!(
-            poll_words(Some(&entry("unavailable")), now, TEXT_TIME),
-            "usage unavailable: why (5 min ago)"
+            poll_words(Some(&entry("unavailable")), now),
+            "usage unavailable: why (5m ago)"
         );
         assert_eq!(
-            poll_words(Some(&entry("signed-out")), now, TEXT_TIME),
+            poll_words(Some(&entry("signed-out")), now),
             "signed out: not polled"
         );
         assert_eq!(
-            poll_words(Some(&entry("timeout")), now, TEXT_TIME),
-            "poll timed out (5 min ago)"
+            poll_words(Some(&entry("timeout")), now),
+            "poll timed out (5m ago)"
         );
         assert_eq!(
-            poll_words(Some(&entry("failed")), now, TEXT_TIME),
-            "poll failed: why (5 min ago)"
+            poll_words(Some(&entry("failed")), now),
+            "poll failed: why (5m ago)"
         );
         let limited = PollEntry {
             backoff_until: Some(iso(now + 10 * MINUTE)),
             ..entry("rate-limited")
         };
         assert_eq!(
-            poll_words(Some(&limited), now, TEXT_TIME),
-            "usage endpoint rate limited (5 min ago); asks again 12:10 (in 10 min)"
+            poll_words(Some(&limited), now),
+            "usage endpoint rate limited (5m ago); asks again 12:10 (in 10m)"
         );
         assert_eq!(
-            poll_words(Some(&entry("rate-limited")), now, TEXT_TIME),
-            "usage endpoint rate limited (5 min ago); asks again later"
+            poll_words(Some(&entry("rate-limited")), now),
+            "usage endpoint rate limited (5m ago); asks again later"
         );
     }
 
@@ -451,11 +381,11 @@ mod tests {
         assert_eq!(work["order"], 1);
         assert_eq!(work["five_hour"]["used"], json!(42.25));
         assert_eq!(work["five_hour"]["threshold"], json!(90));
-        assert_eq!(
-            work["five_hour"]["text"],
-            "42.3% of 90% · resets 14:00 (in 2 h 0 min) · from session 2 min ago"
-        );
-        assert_eq!(work["seven_day"]["text"], "not measured yet");
+        // Moments and numbers: what a screen says of them is the screen's to say.
+        assert_eq!(work["five_hour"]["resetsAt"], json!(iso(now + 2 * HOUR)));
+        assert_eq!(work["five_hour"]["source"], "statusline");
+        assert_eq!(work["five_hour"]["text"], Value::Null);
+        assert_eq!(work["seven_day"]["used"], Value::Null);
         assert_eq!(work["blockedBy"], json!([]));
         assert_eq!(work["availableAt"], json!(iso(now)));
         assert_eq!(work["poll"], Value::Null);
@@ -484,7 +414,7 @@ mod tests {
         assert_eq!(
             poll_line(&snapshot).unwrap(),
             format!(
-                "Usage poll: by the menu (pid {}), every 30 min, next 12:20 (in 20 min); last 11:50 · polling Spare now",
+                "Usage poll: by the menu (pid {}), every 30m, next 12:20 (in 20m); last 11:50 · polling Spare now",
                 std::process::id()
             )
         );

@@ -69,10 +69,18 @@ pub fn footer_hints(state: &State) -> Vec<Hint> {
             return vec![
                 hint("updown", "Field"),
                 hint("leftright", "Adjust"),
+                Hint {
+                    key: "0-9",
+                    label: "Type",
+                    weight: 2,
+                },
                 hint("d", "Default"),
                 hint("enter", "Save"),
                 hint("Esc", "Cancel"),
             ];
+        }
+        Some(ModalKind::Keys) => {
+            return vec![hint("updown", "Scroll"), hint("Esc", "Close")];
         }
         None => {}
     }
@@ -94,6 +102,11 @@ pub fn footer_hints(state: &State) -> Vec<Hint> {
         return vec![
             hint("updown", "Field"),
             hint("leftright", "Adjust"),
+            Hint {
+                key: "0-9",
+                label: "Type",
+                weight: 2,
+            },
             jump,
             hint("d", "Default"),
             hint("enter", "Apply"),
@@ -127,6 +140,13 @@ pub fn footer_hints(state: &State) -> Vec<Hint> {
             weight: 2,
         });
     }
+    // Refresh gives way before the keys do: the keys' own list names it.
+    hints.push(Hint {
+        key: "r",
+        label: "Refresh",
+        weight: 3,
+    });
+    hints.push(hint("?", "Keys"));
     hints.push(hint("q", "Quit"));
     hints
 }

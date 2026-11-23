@@ -11,7 +11,7 @@ use crate::actions::{act, open_actions, run_action};
 use crate::fuzzy::fuzzy_matches;
 use crate::keys::Key;
 use crate::layout::{Size, too_small};
-use crate::modal::{modal_keys, modal_text};
+use crate::modal::{keys_modal, modal_keys, modal_text};
 use crate::mouse::{FieldCommand, Hit, hit_test};
 use crate::pane::{Item, current_item, pane_box, pane_model, scroll_pane};
 use crate::state::{
@@ -21,7 +21,7 @@ use crate::state::{
 use crate::tree::{
     RowKind, Step, move_selection, reselect, select, selectable, selected_row, side_focused, tree_rows,
 };
-use crate::views::policy::{FIELDS, close_form, form_keys, start_form};
+use crate::views::policy::{FIELDS, close_form, form_keys, start_form, with_row};
 
 /// What an action does to the state at the state's own time.
 pub fn reduce(state: &State, action: Action) -> Outcome {
@@ -173,15 +173,6 @@ fn on_key(state: &State, key: &Key) -> Outcome {
     settle(state, own.unwrap_or_else(|| global_keys(state, key)))
 }
 
-/// The state with the Policy form's field `index` under the keyboard.
-fn with_form_index(state: &State, index: usize) -> State {
-    let mut next = state.clone();
-    if let Some(form) = next.form.as_mut() {
-        form.index = index;
-    }
-    next
-}
-
 /// A mouse event.
 fn on_mouse(state: &State, event: &MouseEvent) -> Outcome {
     let Some(target) = hit_test(state, event) else {
@@ -217,9 +208,12 @@ fn on_mouse(state: &State, event: &MouseEvent) -> Outcome {
         // A menu, a pick list and a confirmation close (the confirmation as a No). A line of text and
         // the thresholds stay: what was typed or set there would be lost.
         Hit::Outside => match state.modal.as_ref().map(|modal| &modal.kind) {
-            Some(ModalKind::Actions { .. } | ModalKind::Choice { .. } | ModalKind::Confirm { .. }) => {
-                modal_keys(state, &Key::Escape)
-            }
+            Some(
+                ModalKind::Actions { .. }
+                | ModalKind::Choice { .. }
+                | ModalKind::Confirm { .. }
+                | ModalKind::Keys,
+            ) => modal_keys(state, &Key::Escape),
             _ => result(state.clone()),
         },
         Hit::Choice(index) => {
@@ -274,7 +268,7 @@ fn on_mouse(state: &State, event: &MouseEvent) -> Outcome {
             result(next)
         }
         Hit::Field { index, command } => {
-            let next = with_form_index(&focus_pane(state), index);
+            let next = with_row(&focus_pane(state), index);
             match command {
                 Some(choice @ (FieldCommand::HomeChoice | FieldCommand::EndChoice)) => {
                     let mut next = next;
@@ -295,7 +289,7 @@ fn on_mouse(state: &State, event: &MouseEvent) -> Outcome {
             }
         }
         Hit::Command(key) => {
-            if key.is('q') || key.is('/') {
+            if key.is('q') || key.is('/') || key.is('?') || key.is('r') {
                 return global_keys(state, &key);
             }
             on_key(state, &key)
@@ -308,6 +302,8 @@ fn focus_pane(state: &State) -> State {
     let mut next = state.clone();
     next.focus = Focus::Pane;
     if current_item(state) == Item::Policy && next.form.is_none() {
+        // The form opens on its first field, from the top.
+        next.views.remove(&Item::Policy.key());
         next.form = state.data.as_ref().map(|data| start_form(&data.policy));
     }
     next
@@ -455,6 +451,26 @@ fn global_keys(state: &State, key: &Key) -> Outcome {
             act(&next, &Item::Overview, &Key::Char('a')).unwrap_or_else(|| result(next))
         }
         Key::Char('q') => result_with(state.clone(), vec![Effect::Quit]),
+        // The usage now: the account's when one is selected, else every account's.
+        Key::Char('r') => {
+            let account = match current_item(state) {
+                Item::Account(id) => Some(id),
+                _ => None,
+            };
+            result_with(
+                state.clone(),
+                vec![Effect::Refresh {
+                    account,
+                    quiet: false,
+                }],
+            )
+        }
+        Key::Char('?') => {
+            let mut next = state.clone();
+            next.modal = Some(keys_modal());
+            result(next)
+        }
+        Key::Ctrl('l') => result_with(state.clone(), vec![Effect::Redraw]),
         Key::Char('/') => {
             let mut next = close_form(state);
             next.filtering = true;

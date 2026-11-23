@@ -1,8 +1,9 @@
 //! Dialogs over the view: confirm (y / n), input (a line of text: a new account's name), choice (pick
-//! one: where to hop), thresholds (a small form of two numbers) and the selection's actions. Each holds
-//! its effect as data; `ui::overlays` draws them.
+//! one: where to hop), thresholds (a small form of two numbers), the selection's actions and the keys
+//! of the menu. Each holds its effect as data; `ui::overlays` draws them.
 
 use baton_core::config::Mark;
+use baton_core::json::show;
 use baton_core::names::{clean_name, name_problem as text_problem, same_name};
 use baton_core::text::char_width;
 
@@ -11,6 +12,18 @@ use crate::keys::Key;
 use crate::state::{
     Choose, Effect, Modal, ModalKind, Op, Outcome, State, Submit, Tone, result, result_with, toast,
 };
+use crate::ui::kit::theme_of;
+use crate::ui::overlays::modal_layout;
+
+/// The dialog that lists the menu's keys, from its first line.
+pub fn keys_modal() -> Modal {
+    Modal {
+        title: "Keys".to_owned(),
+        lines: Vec::new(),
+        scroll: Some(0),
+        kind: ModalKind::Keys,
+    }
+}
 
 /// The state with the dialog closed.
 fn close(state: &State) -> State {
@@ -137,11 +150,51 @@ fn threshold_keys(state: &State, modal: &Modal, key: &Key) -> Outcome {
         index,
         values,
         defaults,
+        typing,
     } = &modal.kind
     else {
         return result(state.clone());
     };
     let field = (*index).min(1);
+    let typed = |index: usize, values: [Option<f64>; 2], typing: Option<String>| {
+        let kind = ModalKind::Thresholds {
+            account: account.clone(),
+            account_name: account_name.clone(),
+            index,
+            values,
+            defaults: *defaults,
+            typing,
+        };
+        result(with_modal(
+            state,
+            Modal {
+                kind,
+                ..modal.clone()
+            },
+        ))
+    };
+    // A digit types the percentage, Backspace takes one back (of the number as it stands, when
+    // nothing was typed yet); with all of it taken back the threshold follows the policy. A digit
+    // that would take it past 100 is not taken.
+    if *key == Key::Backspace || matches!(key, Key::Char('0'..='9')) {
+        let mut text = typing.clone().unwrap_or_default();
+        match key {
+            Key::Char(digit) => text.push(*digit),
+            _ => {
+                if typing.is_none() {
+                    text = show(values[field].unwrap_or(defaults[field]));
+                }
+                text.pop();
+            }
+        }
+        let number = text.parse::<f64>().ok();
+        if number.is_some_and(|n| n > 100.0) {
+            return result(state.clone());
+        }
+        let mut next = *values;
+        next[field] = number.map(|n| n.clamp(1.0, 100.0));
+        return typed(field, next, Some(text));
+    }
     let change = |index: usize, values: [Option<f64>; 2]| {
         let kind = ModalKind::Thresholds {
             account: account.clone(),
@@ -149,6 +202,7 @@ fn threshold_keys(state: &State, modal: &Modal, key: &Key) -> Outcome {
             index,
             values,
             defaults: *defaults,
+            typing: None,
         };
         result(with_modal(
             state,
@@ -395,6 +449,24 @@ pub fn modal_keys(state: &State, key: &Key) -> Outcome {
             result(state.clone())
         }
         ModalKind::Thresholds { .. } => threshold_keys(state, modal, key),
+        // The arrows and the page keys scroll it; any other key closes it.
+        ModalKind::Keys => {
+            let (at, most, page) = modal_layout(state, &theme_of(state)).map_or((0, 0, 1), |layout| {
+                (layout.offset, layout.max, layout.room.max(2) - 1)
+            });
+            let to = match key {
+                Key::Up => at.saturating_sub(1),
+                Key::Down => at + 1,
+                Key::PageUp => at.saturating_sub(page),
+                Key::PageDown => at + page,
+                Key::Home => 0,
+                Key::End => most,
+                _ => return result(close(state)),
+            };
+            let mut moved = modal.clone();
+            moved.scroll = Some(to.min(most));
+            result(with_modal(state, moved))
+        }
     }
 }
 

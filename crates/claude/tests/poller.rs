@@ -709,7 +709,7 @@ fn a_claude_that_hangs_is_ended_after_the_timeout_its_process_with_it_a_session_
     assert_eq!(
         hung,
         Outcome::Timeout {
-            reason: "no answer in 2 s; claude was ended".to_owned()
+            reason: "no answer in 2s; claude was ended".to_owned()
         }
     );
     assert!(started.elapsed() < Duration::from_secs(15));

@@ -211,10 +211,7 @@ fn a_baton_session_is_an_instance_it_polls_while_it_runs_says_so_in_baton_status
             .map(|_| ())
     });
     let status = baton(&home, &["status"]).stdout;
-    let by = format!(
-        "Usage poll: by baton (pid {}), every 30 min, next ",
-        session.pid()
-    );
+    let by = format!("Usage poll: by baton (pid {}), every 30m, next ", session.pid());
     assert!(status.contains(&by), "{status}");
     write(&dir.join("done"), "");
     let (code, said) = session.finish();

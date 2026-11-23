@@ -621,7 +621,7 @@ mod tests {
 
     #[test]
     fn notices() {
-        let line = "baton: moving to Spare in 10 s · Enter: now · any other key: stay on Work · Ctrl+C: quit";
+        let line = "baton: moving to Spare in 10s · Enter: now · any other key: stay on Work · Ctrl+C: quit";
         assert_eq!(notice(line, &plain_term()), line);
         let styled = make_terminal(true, 4, GlyphSet::Rich, 80);
         assert_eq!(notice("something else", &styled), "something else");
@@ -629,7 +629,7 @@ mod tests {
         let bare = crate::text::clean(&drawn);
         assert_eq!(
             bare,
-            "╺━╸ moving to Spare in 10 s · Enter: now · any other key: stay on Work · Ctrl+C: quit"
+            "╺━╸ moving to Spare in 10s · Enter: now · any other key: stay on Work · Ctrl+C: quit"
         );
         assert_eq!(
             hint_parts("any other key: stay"),

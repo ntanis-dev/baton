@@ -40,6 +40,7 @@ use baton_core::fsutil::{lower_priority, random_hex, remove_tree};
 use baton_core::json::Get;
 use baton_core::paths::{Paths, profile_dir, profile_env};
 use baton_core::sys::{ProcessTree, own_group};
+use baton_core::text::span;
 use baton_core::usage::{ExtraUsage, Meter, Sample, is_weekly_meter, parse_time_after};
 use baton_core::window::PerWindow;
 use regex::Regex;
@@ -746,8 +747,8 @@ pub fn read_plan_usage(request: &ProbeRequest<'_>) -> Outcome {
     if timed_out {
         return Outcome::Timeout {
             reason: format!(
-                "no answer in {} s; claude was ended",
-                (request.timeout_ms + 500) / 1000
+                "no answer in {}; claude was ended",
+                span(Some(request.timeout_ms as Ms))
             ),
         };
     }

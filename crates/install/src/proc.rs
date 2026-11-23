@@ -8,6 +8,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use baton_core::clock::Ms;
+use baton_core::text::span;
+
 /// What came of running a program.
 #[derive(Debug, Default)]
 pub(crate) struct Finished {
@@ -106,7 +109,7 @@ pub(crate) fn run(mut command: Command, input: Option<&str>, timeout: Duration) 
         status: if timed_out { None } else { status },
         stdout: text(out, &stdout),
         stderr: text(err, &stderr),
-        error: timed_out.then(|| format!("timed out after {} s", timeout.as_secs())),
+        error: timed_out.then(|| format!("timed out after {}", span(Some(timeout.as_millis() as Ms)))),
     }
 }
 

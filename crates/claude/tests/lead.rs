@@ -406,7 +406,7 @@ fn automatic_hop_a_refusal_ends_claude_at_the_turn_end_and_resumes_the_conversat
     assert!(prompt.contains("resumeFromRunId"));
     let output = run.output.text();
     assert!(
-        output.contains("moving this conversation to acct2 in 1 s"),
+        output.contains("moving this conversation to acct2 in 1s"),
         "{output}"
     );
     assert!(
@@ -1340,7 +1340,7 @@ fn a_baton_session_is_an_instance_it_polls_while_it_runs_says_so_and_leaves_noth
     ))
     .unwrap();
     let by = format!(
-        "Usage poll: by baton (pid {}), every 30 min, next ",
+        "Usage poll: by baton (pid {}), every 30m, next ",
         std::process::id()
     );
     assert!(line.starts_with(&by), "{line}");

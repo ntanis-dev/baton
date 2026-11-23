@@ -1,6 +1,7 @@
-//! The policy settings as a form: Up and Down pick a field, Left and Right change it, Enter asks to
-//! confirm, Esc leaves without saving. Each field has a one-line hint that never wraps: its short form,
-//! or none, when the line has no room for it.
+//! The policy settings as a form: Up and Down pick a field, Left and Right change it (PgUp and PgDn by
+//! ten steps), digits type a number into it, Enter asks to confirm, Esc leaves without saving. Each
+//! field has a one-line hint that never wraps: its short form, or none, when the line has no room for
+//! it. The form scrolls with the keyboard where the pane is shorter than it.
 
 use baton_core::config::Policy;
 use baton_core::json::{num, show};
@@ -9,9 +10,9 @@ use baton_core::text::{round, width as cells};
 use baton_core::theme::Glyphs;
 use serde_json::{Value, json};
 
-use super::common::{pad_end, pad_start};
+use super::common::{pad_end, pad_start, section_rule};
 use crate::keys::Key;
-use crate::pane::{ViewModel, body};
+use crate::pane::{Item, ViewModel, body, pane_box};
 use crate::state::{Effect, Focus, Modal, ModalKind, Op, Outcome, State, Tone, result, toast};
 
 /// What kind of value a field takes.
@@ -27,7 +28,7 @@ pub enum FieldKind {
         max: f64,
         /// How much Left and Right change it.
         step: f64,
-        /// Its unit: `%`, `x` or a word.
+        /// Its unit, written right after it: `%`, `x`, `m` for minutes, `d` for days, or none.
         unit: &'static str,
     },
     /// On or off.
@@ -65,12 +66,22 @@ const fn minutes(max: f64) -> FieldKind {
         min: 0.0,
         max,
         step: 5.0,
-        unit: "min",
+        unit: "m",
+    }
+}
+
+/// Days from `min` to `max` in steps of `step`.
+const fn days(min: f64, max: f64, step: f64) -> FieldKind {
+    FieldKind::Number {
+        min,
+        max,
+        step,
+        unit: "d",
     }
 }
 
 /// The form's fields, in order.
-pub const FIELDS: [Field; 11] = [
+pub const FIELDS: [Field; 15] = [
     Field {
         key: "mode",
         label: "Mode",
@@ -153,10 +164,64 @@ pub const FIELDS: [Field; 11] = [
         help: "keep what you set up the same on every account",
         short: "every account",
     },
+    Field {
+        key: "historyDays",
+        label: "History",
+        kind: days(0.0, 3650.0, 30.0),
+        help: "months of history that ended longer ago go (0: none)",
+        short: "kept (0: all)",
+    },
+    Field {
+        key: "sessionDays",
+        label: "Sessions",
+        kind: days(1.0, 365.0, 1.0),
+        help: "records of conversations not seen this long go",
+        short: "kept unseen",
+    },
+    Field {
+        key: "logDays",
+        label: "Logs",
+        kind: days(0.0, 365.0, 1.0),
+        help: "wrappers' logs not written this long go (0: none)",
+        short: "kept (0: all)",
+    },
+    Field {
+        key: "backupsKept",
+        label: "Backups",
+        kind: FieldKind::Number {
+            min: 0.0,
+            max: 1000.0,
+            step: 5.0,
+            unit: "",
+        },
+        help: "the newest kept, the older ones go (0: none go)",
+        short: "kept (0: all)",
+    },
 ];
 
 /// The row of the Apply button: the one after the last field.
 const APPLY_ROW: usize = FIELDS.len();
+
+/// The first field of the Storage group: how long Baton keeps its own records. The fields before it
+/// are how accounts are picked and conversations moved.
+const STORAGE_FROM: usize = 11;
+
+/// The line of the form a row is on (a field, or the Apply button): the Storage group has a blank
+/// line and its title above it, and the button a blank line.
+pub fn line_of(row: usize) -> usize {
+    if row < STORAGE_FROM {
+        row
+    } else if row < APPLY_ROW {
+        row + 2
+    } else {
+        APPLY_ROW + 3
+    }
+}
+
+/// The row a line of the form holds: a field, or the Apply button; None for the lines between.
+pub fn row_at(line: usize) -> Option<usize> {
+    (0..=APPLY_ROW).find(|row| line_of(*row) == line)
+}
 
 /// The policy form while it is open.
 #[derive(Clone, Debug, PartialEq)]
@@ -167,6 +232,9 @@ pub struct Form {
     pub values: Vec<Value>,
     /// The row the keyboard is on: a field, or the Apply button after the last one.
     pub index: usize,
+    /// What was typed into the number field the keyboard is on; None when nothing was, and empty
+    /// when all of it was taken back.
+    pub typing: Option<String>,
 }
 
 impl Form {
@@ -189,6 +257,7 @@ pub fn start_form(policy: &Policy) -> Form {
         original: values.clone(),
         values,
         index: 0,
+        typing: None,
     }
 }
 
@@ -208,11 +277,7 @@ pub fn show_value(field: &Field, value: &Value) -> String {
         .to_owned(),
         FieldKind::Number { unit, .. } => {
             let n = show(round2(value.as_f64().unwrap_or(0.0)));
-            match unit {
-                "%" => format!("{n}%"),
-                "x" => format!("{n}x"),
-                unit => format!("{n} {unit}"),
-            }
+            format!("{n}{unit}")
         }
         FieldKind::Choice(_) => value.as_str().unwrap_or_default().to_owned(),
     }
@@ -237,9 +302,19 @@ pub fn changes(form: &Form) -> Vec<(String, Value)> {
 
 /// A field's control: arrows around a number, a dot and a word, or the choices with the chosen one in
 /// brackets.
-fn control(field: &Field, value: &Value, changed: bool, g: &Glyphs) -> Line {
+fn control(field: &Field, value: &Value, changed: bool, typing: Option<&str>, g: &Glyphs) -> Line {
     let tone = if changed { "warn bold" } else { "bold" };
     match field.kind {
+        // What is being typed shows as it was typed, underlined: its value is settled (kept in the
+        // field's range) all along, and shows when the keyboard leaves the field.
+        FieldKind::Number { unit, .. } if typing.is_some() => vec![
+            s(format!("{} ", g.left), "muted"),
+            s(
+                pad_start(&format!("{}{unit}", typing.unwrap_or_default()), 6),
+                "warn bold underline",
+            ),
+            s(format!(" {}", g.right), "muted"),
+        ],
         FieldKind::Number { .. } => vec![
             s(format!("{} ", g.left), "muted"),
             s(pad_start(&show_value(field, value), 6), tone),
@@ -291,12 +366,17 @@ pub fn form_lines(form: &Form, width: usize, g: &Glyphs, focused: bool) -> Vec<L
                 f,
                 form.values.get(at).unwrap_or(&Value::Null),
                 is_changed(f.key),
+                form.typing.as_deref().filter(|_| at == form.index),
                 g,
             )
         })
         .collect();
     let control_width = controls.iter().map(|line| line_width(line)).max().unwrap_or(0) + 2;
     for (i, f) in FIELDS.iter().enumerate() {
+        if i == STORAGE_FROM {
+            lines.push(Vec::new());
+            lines.push(section_rule("Storage", width, g));
+        }
         let at = i == form.index;
         let mut line = vec![
             s(
@@ -397,12 +477,94 @@ fn step(field: &Field, value: &Value, direction: i32) -> Value {
     }
 }
 
-/// The state with the form's field `at` set to `value`.
+/// The longest a typed number is.
+const TYPED_MOST: usize = 7;
+
+/// What typing `key` into a number field makes of what was typed before: a digit more, a decimal
+/// point where the field steps by less than one, or with Backspace a character fewer (of the number
+/// as it stands, when nothing was typed yet). None for a key that types nothing; a digit that would
+/// take the number past the field's largest, or past two decimals, leaves what was typed as it was.
+fn typed(field: &Field, value: &Value, typing: Option<&str>, key: &Key) -> Option<String> {
+    let FieldKind::Number { max, step, .. } = field.kind else {
+        return None;
+    };
+    let before = typing.unwrap_or_default();
+    let mut text = before.to_owned();
+    match key {
+        Key::Backspace => {
+            if typing.is_none() {
+                text = show(round2(value.as_f64().unwrap_or(0.0)));
+            }
+            text.pop();
+        }
+        Key::Char(digit @ '0'..='9') => text.push(*digit),
+        Key::Char('.') if step < 1.0 && !text.contains('.') => {
+            if text.is_empty() {
+                text.push('0');
+            }
+            text.push('.');
+        }
+        _ => return None,
+    }
+    let decimals = text.split_once('.').map_or(0, |(_, decimals)| decimals.len());
+    let past = text.parse::<f64>().is_ok_and(|n| n > max);
+    Some(if past || decimals > 2 || text.len() > TYPED_MOST {
+        before.to_owned()
+    } else {
+        text
+    })
+}
+
+/// The value typed text stands for in a field, kept in the field's range; None while it is no number
+/// (all of it was taken back).
+fn typed_value(field: &Field, text: &str) -> Option<Value> {
+    let FieldKind::Number { min, max, .. } = field.kind else {
+        return None;
+    };
+    let n = text.parse::<f64>().ok().filter(|n| n.is_finite())?;
+    Some(num(round2(n.clamp(min, max))))
+}
+
+/// The state with the form's field `at` set to `value`, and nothing typed.
 fn with_value(state: &State, at: usize, value: Value) -> State {
     let mut next = state.clone();
-    if let Some(slot) = next.form.as_mut().and_then(|form| form.values.get_mut(at)) {
-        *slot = value;
+    if let Some(form) = next.form.as_mut() {
+        form.typing = None;
+        if let Some(slot) = form.values.get_mut(at) {
+            *slot = value;
+        }
     }
+    next
+}
+
+/// The state with the form's row `row` under the keyboard and in view: the pane scrolls as little as
+/// that takes, to the top for the first row and to the end for the button.
+pub fn with_row(state: &State, row: usize) -> State {
+    let mut next = state.clone();
+    let Some(form) = next.form.as_mut() else {
+        return next;
+    };
+    form.index = row.min(APPLY_ROW);
+    form.typing = None;
+    let row = form.index;
+    let room = pane_box(state).room.rows.max(1);
+    // Under the button: a blank line and how many settings differ from the defaults.
+    let total = line_of(APPLY_ROW) + 3;
+    let most = total.saturating_sub(room);
+    let key = Item::Policy.key();
+    let line = line_of(row);
+    let top = state.views.get(&key).copied().unwrap_or(0).min(most);
+    let top = if row == APPLY_ROW {
+        most
+    } else if line < top {
+        // The group's title comes along with its first field.
+        line.saturating_sub(if row == STORAGE_FROM { 2 } else { 0 })
+    } else if line >= top + room {
+        line + 1 - room
+    } else {
+        top
+    };
+    next.views.insert(key, if row == 0 { 0 } else { top.min(most) });
     next
 }
 
@@ -463,20 +625,15 @@ pub fn close_form(state: &State) -> State {
 /// What a key does in the open form, or None for a key the form does not use.
 pub fn form_keys(state: &State, key: &Key) -> Option<Outcome> {
     let form = state.form.as_ref()?;
-    let count = FIELDS.len() + 1;
-    let index = match key {
+    let row = match key {
         Key::Up => Some(form.index.saturating_sub(1)),
-        Key::Down => Some((form.index + 1).min(count - 1)),
+        Key::Down => Some((form.index + 1).min(APPLY_ROW)),
         Key::Home => Some(0),
-        Key::End => Some(count - 1),
+        Key::End => Some(APPLY_ROW),
         _ => None,
     };
-    if let Some(index) = index {
-        let mut next = state.clone();
-        if let Some(form) = next.form.as_mut() {
-            form.index = index;
-        }
-        return Some(result(next));
+    if let Some(row) = row {
+        return Some(result(with_row(state, row)));
     }
     if *key == Key::Escape {
         let mut next = close_form(state);
@@ -487,16 +644,34 @@ pub fn form_keys(state: &State, key: &Key) -> Option<Outcome> {
         return Some(confirm_apply(state));
     }
     let Some(field) = FIELDS.get(form.index) else {
-        return Some(result(state.clone()));
+        return (*key == Key::Backspace || matches!(key, Key::Char('0'..='9')))
+            .then(|| result(state.clone()));
     };
     let value = form.values.get(form.index).cloned().unwrap_or(Value::Null);
+    let number = matches!(field.kind, FieldKind::Number { .. });
+    if let Some(text) = typed(field, &value, form.typing.as_deref(), key) {
+        // Nothing left of what was typed: the setting is as it was when the form opened.
+        let settled = typed_value(field, &text)
+            .or_else(|| form.original.get(form.index).cloned())
+            .unwrap_or(value);
+        let mut next = with_value(state, form.index, settled);
+        if let Some(form) = next.form.as_mut() {
+            form.typing = Some(text);
+        }
+        return Some(result(next));
+    }
     match key {
         Key::Left => Some(result(with_value(state, form.index, step(field, &value, -1)))),
         Key::Right => Some(result(with_value(state, form.index, step(field, &value, 1)))),
+        // Ten steps at once, where a number has far to go.
+        Key::PageUp if number => Some(result(with_value(state, form.index, step(field, &value, 10)))),
+        Key::PageDown if number => Some(result(with_value(state, form.index, step(field, &value, -10)))),
         Key::Char('d') => {
             let default = Policy::default().get(field.key).unwrap_or(Value::Null);
             Some(result(with_value(state, form.index, default)))
         }
+        // A digit on a setting that is no number does nothing, here as anywhere.
+        Key::Backspace | Key::Char('0'..='9') => Some(result(state.clone())),
         _ => None,
     }
 }
@@ -535,6 +710,7 @@ pub fn model(state: &State, width: usize) -> ViewModel {
 mod tests {
     use super::*;
     use baton_core::lines::plain;
+    use baton_core::text::width;
     use baton_core::theme::RICH;
 
     #[test]
@@ -548,7 +724,8 @@ mod tests {
         assert_eq!(
             shown,
             [
-                "smart", "90%", "95%", "20%", "1.5x", "20 min", "30 min", "on", "30 min", "off", "on"
+                "smart", "90%", "95%", "20%", "1.5x", "20m", "30m", "on", "30m", "off", "on", "180d", "30d",
+                "14d", "50"
             ]
         );
         assert!(changes(&form).is_empty());
@@ -595,7 +772,7 @@ mod tests {
             .iter()
             .map(|l| plain(l))
             .collect();
-        assert_eq!(lines.len(), FIELDS.len() + 4);
+        assert_eq!(lines.len(), line_of(APPLY_ROW) + 3);
         assert_eq!(
             lines[0],
             "› Mode           [smart]  order   how accounts are picked"
@@ -603,8 +780,21 @@ mod tests {
         assert_eq!(lines[1], "  5-hour limit   ←    91% →       blocked at or above");
         assert_eq!(lines[7], "  Rebalance      ● on             after compaction");
         assert_eq!(lines[10], "  Full sync      ● on             every account");
-        assert_eq!(lines[12], "   Apply 1 change   asks to confirm first");
-        assert_eq!(lines[14], "1 differ from the defaults (d resets the field)");
+        // The storage has a title of its own, a blank line under the settings before it.
+        assert_eq!(lines[11], "");
+        assert!(lines[12].starts_with("Storage  "), "{}", lines[12]);
+        assert_eq!(width(&lines[12]), 68);
+        assert_eq!(lines[13], "  History        ←   180d →       kept (0: all)");
+        assert_eq!(lines[16], "  Backups        ←     50 →       kept (0: all)");
+        assert_eq!(lines[18], "   Apply 1 change   asks to confirm first");
+        assert_eq!(lines[20], "1 differ from the defaults (d resets the field)");
+        // What is typed shows as it was typed.
+        form.index = 1;
+        form.typing = Some("07".to_owned());
+        assert_eq!(
+            plain(&form_lines(&form, 68, &RICH, true)[1]),
+            "› 5-hour limit   ←    07% →       blocked at or above"
+        );
         let wide: Vec<String> = form_lines(&start_form(&Policy::default()), 100, &RICH, false)
             .iter()
             .map(|l| plain(l))
@@ -613,7 +803,61 @@ mod tests {
             wide[0],
             "› Mode           [smart]  order   smart picks by room and urgency; order fills one then next"
         );
-        assert_eq!(wide[12], "   Apply   nothing changed yet");
-        assert_eq!(wide[14], "all at their defaults");
+        assert_eq!(wide[18], "   Apply   nothing changed yet");
+        assert_eq!(wide[20], "all at their defaults");
+    }
+
+    #[test]
+    fn the_rows_of_the_form_and_the_lines_they_are_on() {
+        assert_eq!(FIELDS[STORAGE_FROM].key, "historyDays");
+        assert_eq!((line_of(0), line_of(STORAGE_FROM - 1)), (0, STORAGE_FROM - 1));
+        assert_eq!(line_of(STORAGE_FROM), STORAGE_FROM + 2);
+        assert_eq!(line_of(APPLY_ROW), FIELDS.len() + 3);
+        for row in 0..=APPLY_ROW {
+            assert_eq!(row_at(line_of(row)), Some(row));
+        }
+        // The lines between hold no row.
+        assert_eq!(row_at(STORAGE_FROM), None);
+        assert_eq!(row_at(STORAGE_FROM + 1), None);
+        assert_eq!(row_at(line_of(APPLY_ROW) - 1), None);
+        assert_eq!(row_at(line_of(APPLY_ROW) + 1), None);
+        // Every setting of the form is one the policy has, in its range.
+        for field in FIELDS {
+            assert!(Policy::default().get(field.key).is_some(), "{}", field.key);
+        }
+    }
+
+    #[test]
+    fn typing_a_number_into_a_field() {
+        let key = |c: char| Key::Char(c);
+        let five = &FIELDS[1];
+        let some = |text: &str| Some(text.to_owned());
+        assert_eq!(typed(five, &json!(90), None, &key('4')), some("4"));
+        assert_eq!(typed(five, &json!(4), Some("4"), &key('2')), some("42"));
+        assert_eq!(typed(five, &json!(10), Some("10"), &key('0')), some("100"));
+        // Past the largest: left as it was.
+        assert_eq!(typed(five, &json!(42), Some("42"), &key('0')), some("42"));
+        // Backspace: of what was typed, else of the number as it stands.
+        assert_eq!(typed(five, &json!(90), None, &Key::Backspace), some("9"));
+        assert_eq!(typed(five, &json!(9), Some("9"), &Key::Backspace), some(""));
+        assert_eq!(typed(five, &json!(90), Some(""), &Key::Backspace), some(""));
+        // A decimal point only where the setting steps by less than one, and two decimals at most.
+        assert_eq!(typed(five, &json!(9), Some("9"), &key('.')), None);
+        let factor = &FIELDS[4];
+        assert_eq!(typed(factor, &json!(1.5), None, &key('.')), some("0."));
+        assert_eq!(typed(factor, &json!(2), Some("2"), &key('.')), some("2."));
+        assert_eq!(typed(factor, &json!(2), Some("2."), &key('.')), None);
+        assert_eq!(typed(factor, &json!(2.25), Some("2.25"), &key('5')), some("2.25"));
+        // Other keys, and other kinds of setting, type nothing.
+        assert_eq!(typed(five, &json!(90), None, &key('x')), None);
+        assert_eq!(typed(&FIELDS[0], &json!("smart"), None, &key('1')), None);
+        assert_eq!(typed(&FIELDS[7], &json!(true), None, &Key::Backspace), None);
+        // What the typed text stands for stays in the field's range.
+        assert_eq!(typed_value(five, "42"), Some(json!(42)));
+        assert_eq!(typed_value(five, "0"), Some(json!(1)));
+        assert_eq!(typed_value(five, "007"), Some(json!(7)));
+        assert_eq!(typed_value(five, ""), None);
+        assert_eq!(typed_value(factor, "2."), Some(json!(2)));
+        assert_eq!(typed_value(factor, "0.25"), Some(json!(0.25)));
     }
 }

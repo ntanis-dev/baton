@@ -350,7 +350,11 @@ pub enum ModalKind {
         values: [Option<f64>; 2],
         /// The policy's thresholds (5-hour, weekly).
         defaults: [f64; 2],
+        /// What was typed into the field the keyboard is on; None when nothing was.
+        typing: Option<String>,
     },
+    /// The keys of the menu, to read.
+    Keys,
 }
 
 /// A dialog over the view.
@@ -367,7 +371,7 @@ pub struct Modal {
 }
 
 impl Modal {
-    /// The dialog's kind: `actions`, `confirm`, `input`, `choice`, `thresholds`.
+    /// The dialog's kind: `actions`, `confirm`, `input`, `choice`, `thresholds`, `keys`.
     pub fn kind_name(&self) -> &'static str {
         match self.kind {
             ModalKind::Actions { .. } => "actions",
@@ -375,6 +379,7 @@ impl Modal {
             ModalKind::Input { .. } => "input",
             ModalKind::Choice { .. } => "choice",
             ModalKind::Thresholds { .. } => "thresholds",
+            ModalKind::Keys => "keys",
         }
     }
 

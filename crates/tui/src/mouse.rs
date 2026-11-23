@@ -10,7 +10,7 @@ use crate::tree::{side_focused, side_lines, side_span, side_top, side_width, tre
 use crate::ui::chrome::footer_model;
 use crate::ui::kit::theme_of;
 use crate::ui::overlays::{modal_layout, toast_layouts};
-use crate::views::policy::{FIELDS, FieldKind};
+use crate::views::policy::{FIELDS, FieldKind, row_at};
 
 /// What a click on a policy field's control does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -207,7 +207,8 @@ pub fn hit_test(state: &State, event: &MouseEvent) -> Option<Hit> {
         return Some(Hit::Select(link.select.clone()));
     }
     if item == Item::Policy {
-        if let Some(field) = FIELDS.get(body_y) {
+        let row = row_at(body_y);
+        if let Some((index, field)) = row.and_then(|row| Some((row, FIELDS.get(row)?))) {
             let control_x = 2 + FIELDS.iter().map(|f| width(f.label)).max().unwrap_or(0) + 2;
             let command = if px < control_x || px > control_x + 18 {
                 None
@@ -224,12 +225,9 @@ pub fn hit_test(state: &State, event: &MouseEvent) -> Option<Hit> {
                     FieldCommand::Right
                 })
             };
-            return Some(Hit::Field {
-                index: body_y,
-                command,
-            });
+            return Some(Hit::Field { index, command });
         }
-        if body_y == FIELDS.len() + 1 {
+        if row == Some(FIELDS.len()) {
             return Some(Hit::Field {
                 index: FIELDS.len(),
                 command: Some(FieldCommand::Enter),

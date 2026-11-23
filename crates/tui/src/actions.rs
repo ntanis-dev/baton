@@ -265,6 +265,7 @@ pub fn act(state: &State, item: &Item, key: &Key) -> Option<Outcome> {
                                 index: 0,
                                 values: [config.and_then(|c| c.five_hour), config.and_then(|c| c.weekly)],
                                 defaults: [policy.five_hour, policy.weekly],
+                                typing: None,
                             },
                         },
                     ))

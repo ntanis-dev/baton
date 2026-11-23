@@ -15,7 +15,7 @@ use baton_claude::poller::PollResult;
 use baton_core::clock::{Ms, local, now_ms, parse_ms};
 use baton_core::config::{By, load_config, name_of};
 use baton_core::env::Env;
-use baton_core::format::{TEXT_TIME, poll_words};
+use baton_core::format::poll_words;
 use baton_core::hop::{HopRequest, hop};
 use baton_core::json::{Object, opt_num};
 use baton_core::paths::Paths;
@@ -181,7 +181,7 @@ pub fn refresh_summary(results: &[PollResult], now: Ms) -> String {
                 r.name
             );
         }
-        return format!("{}: {}.", r.name, poll_words(Some(&r.entry()), now, TEXT_TIME));
+        return format!("{}: {}.", r.name, poll_words(Some(&r.entry()), now));
     }
     let mut counts: Vec<(&str, usize)> = Vec::new();
     for r in results {

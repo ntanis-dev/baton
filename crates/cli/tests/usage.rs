@@ -464,7 +464,7 @@ fn baton_status_says_which_instance_polls_and_that_none_does_after_the_last_one(
     assert!(host.beat());
     let status = baton(&home, &["status"]).stdout;
     let by = format!(
-        "Usage poll: by baton (pid {}), every 30 min, next ",
+        "Usage poll: by baton (pid {}), every 30m, next ",
         std::process::id()
     );
     assert!(status.contains(&by), "{status}");

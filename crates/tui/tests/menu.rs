@@ -134,7 +134,7 @@ fn the_overview_is_concise_while_detail_views_retain_the_full_information() {
 }
 
 #[test]
-fn contextual_label_bars_explain_symbols_without_a_help_page() {
+fn contextual_label_bars_explain_symbols_and_a_question_mark_lists_the_keys() {
     let home = home(false);
     let state = menu_state(&home.paths, &[]);
     let g = &RICH;
@@ -191,7 +191,44 @@ fn contextual_label_bars_explain_symbols_without_a_help_page() {
             "{kind}"
         );
     }
-    assert!(go!(&home.paths, state, "?").state.modal.is_none());
+    // The keys have a page of their own: it scrolls, and any other key closes it.
+    let keys = go!(&home.paths, state, "?").state;
+    assert_eq!(modal_kind(&keys), Some("keys"));
+    let shown = frame(&keys).join("\n");
+    for words in [
+        "Keys",
+        "Filter the list by name",
+        "Ask the usage now",
+        "Type a number",
+    ] {
+        assert!(shown.contains(words), "{words}:\n{shown}");
+    }
+    let small = go!(
+        &home.paths,
+        menu_state_with(&home.paths, common::size("80x24"), &[], GlyphSet::Rich),
+        "?"
+    )
+    .state;
+    // All of it fits the smallest terminal, where the keys that scroll leave it as it is.
+    assert!(
+        frame(&small)
+            .join(
+                "
+"
+            )
+            .contains("Quit (Ctrl+C")
+    );
+    for key in ["down", "end", "pagedown", "up", "home"] {
+        assert_eq!(go!(&home.paths, small, key).state, small, "{key}");
+    }
+    for key in ["escape", "enter", "q", "?", "x"] {
+        let closed = go!(&home.paths, keys, key);
+        assert_eq!(
+            (closed.state.modal.is_none(), closed.effects.len()),
+            (true, 0),
+            "{key}"
+        );
+    }
 }
 
 #[test]
@@ -376,7 +413,7 @@ fn the_filter_narrows_the_sidebar_as_you_type_and_esc_clears_it() {
 }
 
 #[test]
-fn quit_and_undisclosed_shortcuts() {
+fn quit_and_draw_again() {
     let home = home(false);
     let paths = &home.paths;
     assert_eq!(
@@ -387,7 +424,9 @@ fn quit_and_undisclosed_shortcuts() {
         go!(paths, menu_state(paths, &[]), "ctrl+c").effects,
         vec![Effect::Quit]
     );
-    assert_eq!(go!(paths, menu_state(paths, &[]), "ctrl+l").effects, vec![]);
+    let again = go!(paths, menu_state(paths, &[]), "ctrl+l");
+    assert_eq!(again.effects, vec![Effect::Redraw]);
+    assert_eq!(again.state, menu_state(paths, &[]));
 }
 
 #[test]
@@ -469,17 +508,30 @@ fn left_and_right_fold_the_recent_sessions_and_go_between_the_fold_and_its_sessi
 }
 
 #[test]
-fn the_footer_offers_actions_and_undisclosed_direct_shortcuts_do_nothing() {
+fn the_footer_offers_actions_and_the_keys_nothing_names_do_nothing() {
     let home = home(false);
     let paths = &home.paths;
     let account = menu_state(paths, &["down", "down"]);
     let hints = keys_of(&account);
-    assert!(!hints.contains(&"Space") && !hints.contains(&"?") && hints.contains(&"q"));
+    assert!(!hints.contains(&"Space") && hints.contains(&"?") && hints.contains(&"q"));
+    // r asks the usage from anywhere: the selected account's, else every account's.
+    assert!(hints.contains(&"r"));
+    let asked = |state: &State| match go!(paths, *state, "r").effects.as_slice() {
+        [
+            Effect::Refresh {
+                account,
+                quiet: false,
+            },
+        ] => account.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(asked(&account), Some("acct2".to_owned()));
+    assert_eq!(asked(&menu_state(paths, &[])), None);
+    assert_eq!(asked(&menu_state(paths, &["end", "up", "enter"])), None);
     assert!(!hints.contains(&"d") && !hints.contains(&"s") && hints.contains(&"enter"));
     assert!(go!(paths, account, " ").state.modal.is_none());
     for key in [
         "e",
-        "r",
         "s",
         "d",
         "p",
@@ -490,9 +542,7 @@ fn the_footer_offers_actions_and_undisclosed_direct_shortcuts_do_nothing() {
         "K",
         "h",
         "H",
-        "?",
         "tab",
-        "ctrl+l",
         "j",
         "k",
         "g",
@@ -645,6 +695,34 @@ fn account_actions_marks_order_thresholds_sign_in_add_remove() {
         json!({ "id": "acct2", "fiveHour": null, "weekly": null })
     );
     assert_eq!(go!(paths, form, "escape").applied().len(), 0);
+    // A threshold is typed too: a digit past 100 is not taken, and what is typed shows as typed.
+    let typed = go!(paths, form, "8", "5").state;
+    assert!(
+        frame(&typed)
+            .join(
+                "
+"
+            )
+            .contains("85%")
+    );
+    assert_eq!(
+        go!(paths, typed, "0", "down", text("70"), "enter").applied()[0]["args"],
+        json!({ "id": "acct2", "fiveHour": 85, "weekly": 70 })
+    );
+    // Backspace takes a digit back, of the number as it stands when nothing was typed; with all of
+    // it taken back the threshold follows the policy again.
+    assert_eq!(
+        go!(paths, form, "backspace", "enter").applied()[0]["args"]["fiveHour"],
+        json!(9)
+    );
+    assert_eq!(
+        go!(paths, typed, "backspace", "backspace", "enter").applied()[0]["args"]["fiveHour"],
+        json!(null)
+    );
+    assert_eq!(
+        go!(paths, typed, "right", "enter").applied()[0]["args"]["fiveHour"],
+        json!(86)
+    );
     // Remove asks first.
     let acct3 = menu_state(paths, &["down", "down", "down"]);
     let confirm = go!(paths, acct3, "enter", "d").state;
@@ -730,13 +808,15 @@ fn the_policy_form_changes_settings_after_a_confirmation_and_esc_leaves_them() {
         json!({ "changes": { "fiveHour": 91, "planFactor": 1.6 } })
     );
     let value = |state: &State, key: &str| state.form.as_ref().unwrap().value(key).cloned().unwrap();
-    let toggled = go!(paths, form, "end", "up", "up", "up", "up", "left");
+    let toggled = go!(
+        paths, form, "end", "up", "up", "up", "up", "up", "up", "up", "up", "left"
+    );
     assert_eq!(value(&toggled.state, "compactionRebalance"), json!(false));
     // Under the usage poll: Baton's usage after your own bar.
-    let bar = go!(paths, form, "end", "up", "up", "right");
+    let bar = go!(paths, form, "end", "up", "up", "up", "up", "up", "up", "right");
     assert_eq!(value(&bar.state, "statusLineUsage"), json!(true));
-    // The last field: full sync, on unless the operator turns it off.
-    let sync = go!(paths, form, "end", "up", "left");
+    // The last field before the storage: full sync, on unless the operator turns it off.
+    let sync = go!(paths, form, "end", "up", "up", "up", "up", "up", "left");
     assert_eq!(value(&form, "fullSync"), json!(true));
     assert_eq!(value(&sync.state, "fullSync"), json!(false));
     assert_eq!(value(&go!(paths, form, "right").state, "mode"), json!("order"));
@@ -744,6 +824,108 @@ fn the_policy_form_changes_settings_after_a_confirmation_and_esc_leaves_them() {
     assert!(left.state.form.is_none());
     assert_eq!(left.applied().len(), 0);
     assert!(last_toast(&left.state).unwrap().contains("left unchanged"));
+}
+
+#[test]
+fn numbers_are_typed_into_the_policy_form_and_the_form_scrolls_with_the_keyboard() {
+    let home = home(false);
+    let paths = &home.paths;
+    let form = menu_state(paths, &["end", "up", "enter"]);
+    let value = |state: &State, key: &str| state.form.as_ref().unwrap().value(key).cloned().unwrap();
+    // The 5-hour limit, typed over digit by digit.
+    let typed = go!(paths, form, "down", "8", "5").state;
+    assert_eq!(value(&typed, "fiveHour"), json!(85));
+    assert!(frame(&typed).join("\n").contains("85%"));
+    // A digit past the largest is not taken; Backspace takes one back; with nothing left the setting
+    // is as it was when the form opened.
+    assert_eq!(value(&go!(paths, typed, "0").state, "fiveHour"), json!(85));
+    assert_eq!(value(&go!(paths, typed, "backspace").state, "fiveHour"), json!(8));
+    assert_eq!(
+        value(&go!(paths, typed, "backspace", "backspace").state, "fiveHour"),
+        json!(90)
+    );
+    // Backspace on a number nothing was typed into takes its last digit.
+    assert_eq!(
+        value(&go!(paths, form, "down", "backspace").state, "fiveHour"),
+        json!(9)
+    );
+    // Text that arrives at once types too, and a decimal goes where a setting steps by less than one.
+    assert_eq!(
+        value(&go!(paths, form, "down", text("72")).state, "fiveHour"),
+        json!(72)
+    );
+    assert_eq!(
+        value(
+            &go!(paths, form, "down", "down", "down", "down", text("2.25")).state,
+            "planFactor"
+        ),
+        json!(2.25)
+    );
+    // A digit on a setting that is no number does nothing; the page keys step a number by ten.
+    assert_eq!(go!(paths, form, "5").state, form);
+    assert_eq!(
+        value(&go!(paths, form, "down", "pagedown").state, "fiveHour"),
+        json!(80)
+    );
+    assert_eq!(
+        value(&go!(paths, form, "down", "pagedown", "pageup").state, "fiveHour"),
+        json!(90)
+    );
+    // Moving on leaves the number as typed.
+    let moved = go!(paths, typed, "down").state;
+    assert_eq!(moved.form.as_ref().unwrap().typing, None);
+    assert_eq!(value(&moved, "fiveHour"), json!(85));
+    // The storage: how long Baton keeps its own records.
+    let storage = go!(paths, form, "end", "up", "up", "up", "up", "3", "6", "5");
+    assert_eq!(value(&storage.state, "historyDays"), json!(365));
+    let confirm = go!(paths, storage.state, "enter").state;
+    let asks = &confirm.modal.as_ref().unwrap().lines;
+    assert!(
+        asks[0].starts_with("History: 180d") && asks[0].ends_with("365d"),
+        "{asks:?}"
+    );
+    assert_eq!(
+        go!(paths, confirm, "y").applied()[0]["args"],
+        json!({ "changes": { "historyDays": 365 } })
+    );
+    // In the smallest terminal the form is taller than its pane: the row under the keyboard is always
+    // drawn, the group's title with its first field, and the count of what differs with the button.
+    let small = menu_state_with(
+        paths,
+        common::size("80x24"),
+        &["end", "up", "enter"],
+        GlyphSet::Rich,
+    );
+    let mut at = small.clone();
+    for field in baton_tui::views::policy::FIELDS {
+        let lines = frame(&at).join("\n");
+        assert!(
+            lines.contains(&format!("\u{203a} {}", field.label)),
+            "{}:\n{lines}",
+            field.label
+        );
+        if field.key == "historyDays" {
+            assert!(lines.contains("Storage"), "{lines}");
+        }
+        at = go!(paths, at, "down").state;
+    }
+    let button = frame(&at).join("\n");
+    assert!(
+        button.contains("\u{203a}  Apply") && button.contains("all at their defaults"),
+        "{button}"
+    );
+    assert!(!button.contains("5-hour limit"), "{button}");
+    assert!(
+        frame(&go!(paths, at, "home").state)
+            .join("\n")
+            .contains("\u{203a} Mode")
+    );
+    // Back up, one row at a time.
+    for _ in 0..4 {
+        at = go!(paths, at, "up").state;
+    }
+    assert!(frame(&at).join("\n").contains("\u{203a} History"));
+    assert!(frame(&at).join("\n").contains("Storage"));
 }
 
 #[test]

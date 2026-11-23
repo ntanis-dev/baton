@@ -64,7 +64,9 @@ baton view                          # or open the menu
 | `baton doctor`             | Checks Claude Code, every profile, the install, the Ferry registration and Ferry's agent  |
 
 `baton help <command>` shows a command's options, and `--json` prints data instead of the screen where that makes
-sense. To start with a prompt, put `start` first: `baton start "fix the tests"`. `baton` stays out of the way: Ctrl+C,
+sense: moments as ISO times and numbers as numbers, and a failure as `{ "error": ..., "code": ... }` on stdout with
+the same exit code. An argument a command has no use for is an error, not passed over. An option that is on or off
+stands alone for on (`--last-resort`, `--full-sync`) or takes `on` or `off`. To start with a prompt, put `start` first: `baton start "fix the tests"`. `baton` stays out of the way: Ctrl+C,
 Esc and `/exit` all go to Claude Code. Running `claude` directly still works; Baton just does not move it.
 
 Accounts have an order and a mark: **preferred**, **normal** or **last resort** (used only when every other account is
@@ -147,19 +149,26 @@ To keep one more key of `.claude.json` in step, name it in `~/.baton/config.json
 the left, details on the right. Below 100 columns the list is narrower and the details keep their width.
 
 - The **overview** shows the next account, usage meters, live sessions and today's moves.
-- Each **account** has an Actions menu: rename, mode, thresholds, refresh, sign-in, order and delete. Each action's
+- Each **account** has an Actions menu: rename, mark, thresholds, refresh, sign-in, order and delete. Each action's
   shortcut key is shown next to it.
-- **Policy** and **Stats** have their own views. Removing an account or changing the policy asks you to confirm.
+- **Policy** and **Stats** have their own views. The Policy view is a form: how accounts are picked and
+  conversations moved, then **Storage**, how long Baton keeps its own records. Removing an account or changing the
+  policy asks you to confirm.
 
 | Key                          | Action                                                   |
 | ---------------------------- | -------------------------------------------------------- |
 | Click, `↑` `↓`, `Home` `End` | Select an item and show it                               |
 | `Enter`                      | Open the Actions menu of the selected account or session |
 | `/`                          | Search                                                   |
+| `r`                          | Ask the usage now: the account's, else every account's   |
 | `PgUp` `PgDn`, mouse wheel   | Scroll the details                                       |
+| `←` `→`, digits, `Backspace` | Change a setting, or type its number                     |
+| `?`                          | List the keys                                            |
+| `Ctrl+L`                     | Draw the screen again                                    |
 | `q` or `Ctrl+C`              | Quit                                                     |
 
-Set `NO_COLOR` to drop the colors, `BATON_GLYPHS=plain` for the classic Windows console's glyphs, and
+Set `NO_COLOR` to drop the colors, `BATON_GLYPHS=plain` for the plain glyphs (Baton picks them itself on the classic
+Windows console, the Linux console and where the locale is not UTF-8), `BATON_GLYPHS=rich` for the rich ones, and
 `BATON_MOUSE=off` to leave the mouse alone. The splash screen greets a first start, before there is an account;
 `BATON_SPLASH=on` shows it at every start and `off` never. The other commands print in the same look, and as plain text when piped.
 
@@ -189,8 +198,8 @@ Set `NO_COLOR` to drop the colors, `BATON_GLYPHS=plain` for the classic Windows 
   other accounts' bars come from their last recorded usage, so they can lag a little. A plan with no 5-hour limit
   has no `5h` of its own and no bar in the `5h` group, and when none of your accounts has one that group is left out.
   If you keep your own status line, Baton shows nothing of its own there. To add Baton's usage after yours, on the same
-  line and only as far as the terminal is wide, run `baton policy --status-line-usage true` (or turn on Bar usage in
-  the menu's Policy view). `false` turns it off again.
+  line and only as far as the terminal is wide, run `baton policy --status-line-usage` (or turn on Bar usage in
+  the menu's Policy view). `--status-line-usage off` turns it off again.
 - **Hooks** for `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure`, `SessionEnd` and `ConfigChange`. They run
   in a fraction of a second, never block, and never fail a session. Your own hooks stay.
 - **The `/hop` command** (skipped if you have your own `hop.md`). It may run `baton hop` and nothing else. A name
@@ -313,8 +322,8 @@ read (a comma too many after a hand edit) is never saved over as an empty one: `
 These records do not grow for ever. When `baton` or the menu starts, what is old goes: the history's months that ended
 more than 180 days ago (`baton policy --history-days <n>`, `0` keeps them), the records of conversations not seen for
 30 days (`--session-days`), wrappers' logs older than 14 days (`--log-days`), all but the newest 50 backups
-(`--backups-kept`), and the records of wrappers that no longer run. Claude Code's own transcripts and memory are never
-touched.
+(`--backups-kept`), and the records of wrappers that no longer run. The same four are under Storage in the menu's
+Policy view. Claude Code's own transcripts and memory are never touched.
 
 </details>
 

@@ -83,7 +83,7 @@ fn the_layout_is_as_wide_as_the_terminal_within_reason() {
 
 #[test]
 fn notices_from_a_baton_session_have_the_mark_in_front_and_the_key_hints_after_the_first_dot() {
-    let line = "baton: acct1 reached its 5-hour limit; moving this conversation to acct2 in 8 s · Enter: now · any other key: stay on acct1 · Ctrl+C: quit";
+    let line = "baton: acct1 reached its 5-hour limit; moving this conversation to acct2 in 8s · Enter: now · any other key: stay on acct1 · Ctrl+C: quit";
     assert_eq!(notice(line, &pipe(&[])), line, "not a terminal: unchanged");
     let term = tty(24, 100);
     let styled = notice(line, &term);

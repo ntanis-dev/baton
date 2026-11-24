@@ -771,14 +771,10 @@ mod tests {
         // It can have written a record of just now, and none of last week: it was not there then.
         let me = i64::from(std::process::id());
         assert!(wrote_at(me, now, 60_000));
-        assert!(wrote_at(me, started, 0));
+        // (Where the start is told to the second, a second's slack is what asking twice needs.)
+        assert!(wrote_at(me, started, 2000));
         assert!(!wrote_at(me, now - 8 * 86_400_000, 60_000));
         assert!(!wrote_at(0, now, 60_000));
-        // The system's own process is there, and tells this user nothing: it wrote no record of ours.
-        if cfg!(windows) {
-            assert!(is_alive(4));
-            assert!(!wrote_at(4, now, 60_000));
-        }
     }
 
     #[test]

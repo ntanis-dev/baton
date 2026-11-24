@@ -44,6 +44,80 @@ fn alive(pid: u32) -> bool {
     sent == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
+/// When process `pid` started, in milliseconds since the epoch; None when it is gone, or the system
+/// does not say (a process of someone else's). A process id is given anew once its process is gone:
+/// one that started after a record naming it was written is not the process that wrote the record.
+pub fn started_at(pid: i64) -> Option<crate::clock::Ms> {
+    if pid <= 0 || pid > i64::from(u32::MAX) {
+        return None;
+    }
+    started(pid as u32)
+}
+
+#[cfg(windows)]
+fn started(pid: u32) -> Option<crate::clock::Ms> {
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    let none = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut created, mut exited, mut kernel, mut user) = (none, none, none, none);
+    // SAFETY: OpenProcess takes plain values; the handle it returns is checked, used for one query that
+    // writes into four values of this function, and closed before returning.
+    let asked = unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return None;
+        }
+        let asked = GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user);
+        CloseHandle(handle);
+        asked
+    };
+    if asked == 0 {
+        return None;
+    }
+    // Counted in 100 ns from 1601, which is 11 644 473 600 seconds before the epoch.
+    let ticks = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
+    i64::try_from(ticks / 10_000)
+        .ok()
+        .map(|ms| ms - 11_644_473_600_000)
+}
+
+#[cfg(unix)]
+fn started(pid: u32) -> Option<crate::clock::Ms> {
+    // How long it has run, to the second, is what `ps` says the same way on every system.
+    let said = std::process::Command::new("ps")
+        .args(["-o", "etime=", "-p", &pid.to_string()])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    let elapsed = elapsed_seconds(String::from_utf8_lossy(&said.stdout).trim())?;
+    Some(crate::clock::now_ms() - elapsed * 1000)
+}
+
+/// How long a process has run as `ps` writes it, `[[days-]hours:]minutes:seconds`, in seconds.
+#[cfg(any(unix, test))]
+fn elapsed_seconds(text: &str) -> Option<i64> {
+    let (days, clock) = match text.split_once('-') {
+        Some((days, clock)) => (days.trim().parse::<i64>().ok()?, clock),
+        None => (0, text),
+    };
+    let parts: Vec<i64> = clock
+        .split(':')
+        .map(|part| part.trim().parse::<i64>().ok())
+        .collect::<Option<_>>()?;
+    let seconds = match parts.as_slice() {
+        [minutes, seconds] => minutes * 60 + seconds,
+        [hours, minutes, seconds] => hours * 3600 + minutes * 60 + seconds,
+        _ => return None,
+    };
+    Some(days * 86_400 + seconds)
+}
+
 /// Runs process `pid` at a low priority (Windows: below normal), so that work in the background never
 /// competes with the session in front of the operator. Best effort: a process that is gone, or that may
 /// not be changed, keeps its priority.
@@ -662,6 +736,32 @@ mod tests {
         assert!(!is_alive(0));
         assert!(!is_alive(-4));
         assert!(!is_alive(i64::MAX));
+    }
+
+    #[test]
+    fn this_process_started_a_moment_ago_and_nonsense_never_did() {
+        let now = crate::clock::now_ms();
+        let started = started_at(i64::from(std::process::id())).unwrap();
+        // To the second, on the systems that say it that way.
+        assert!(started <= now + 1000, "{started} is not after {now}");
+        assert!(
+            now - started < 3_600_000,
+            "{started} is this run's own start, not long ago"
+        );
+        assert_eq!(started_at(0), None);
+        assert_eq!(started_at(-4), None);
+        assert_eq!(started_at(i64::MAX), None);
+    }
+
+    #[test]
+    fn how_long_a_process_has_run_as_ps_writes_it() {
+        assert_eq!(elapsed_seconds("00:07"), Some(7));
+        assert_eq!(elapsed_seconds("12:34"), Some(754));
+        assert_eq!(elapsed_seconds("01:02:03"), Some(3723));
+        assert_eq!(elapsed_seconds("8-01:02:03"), Some(8 * 86_400 + 3723));
+        assert_eq!(elapsed_seconds(""), None);
+        assert_eq!(elapsed_seconds("7"), None);
+        assert_eq!(elapsed_seconds("a:b"), None);
     }
 
     #[test]

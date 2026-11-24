@@ -27,7 +27,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::clock::{DAY, HOUR, Ms, iso, ms_of};
+use crate::clock::{DAY, HOUR, Ms, iso, ms_of, parse_ms};
 use crate::fsutil::{
     append_json_line, is_alive, mtime_ms, read_json, read_json_lines, remove_file, remove_tree,
     write_json_atomic,
@@ -35,6 +35,7 @@ use crate::fsutil::{
 use crate::json::Get;
 use crate::oslock::{OsLock, is_held};
 use crate::paths::{Paths, is_id};
+use crate::sys::started_at;
 use crate::usage::TurnSample;
 
 /// Whether `id` can be a session's or a wrapper's id.
@@ -137,11 +138,27 @@ impl Lock {
     }
 }
 
+/// How much later than its record a process may have started and still be the one that wrote it:
+/// clocks are set, and some systems tell a start to the second only.
+const START_SLACK: Ms = 60_000;
+
 /// Whether the process a record names is alive: what tells of a wrapper from before the locks were
 /// the operating system's, which holds none. A process id is given anew once its process is gone, so
-/// this is asked only where there is no lock to ask.
+/// this is asked only where there is no lock to ask, and a process that started after the record was
+/// written (`at`, or a wrapper's `startedAt`) is another one that got the number since.
 fn alive_pid(record: &Value) -> bool {
-    record.int("pid").is_some_and(is_alive)
+    let Some(pid) = record.int("pid").filter(|pid| is_alive(*pid)) else {
+        return false;
+    };
+    let written = record
+        .text("at")
+        .or_else(|| record.text("startedAt"))
+        .and_then(parse_ms);
+    match (written, started_at(pid)) {
+        (Some(written), Some(started)) => started <= written + START_SLACK,
+        // Where either is not known, the process being there is all there is to go by.
+        _ => true,
+    }
 }
 
 /// The per-session lock: one wrapper drives a conversation at a time. The lock is the operating
@@ -487,6 +504,16 @@ mod tests {
         write_session_file(&paths, before, "lock.json", &earlier).unwrap();
         assert_eq!(lock_holder(&paths, before), Some(earlier.clone()));
         assert!(matches!(acquire_lock(&paths, before, &other), Lock::Held(holder) if holder == earlier));
+        // Its record says when it was written. A process that started after that is not the wrapper:
+        // the system gave its number to another one since (days later, to anything at all).
+        let now = crate::clock::now_ms();
+        let fresh = json!({ "pid": me(), "wrapper": "w0", "at": iso(now) });
+        write_session_file(&paths, before, "lock.json", &fresh).unwrap();
+        assert_eq!(lock_holder(&paths, before), Some(fresh));
+        let stale = json!({ "pid": me(), "wrapper": "w0", "at": iso(now - 8 * DAY) });
+        write_session_file(&paths, before, "lock.json", &stale).unwrap();
+        assert_eq!(lock_holder(&paths, before), None);
+        assert!(!is_locked(&paths, before));
         write_session_file(&paths, before, "lock.json", &json!({ "pid": 0, "wrapper": "w0" })).unwrap();
         assert_eq!(lock_holder(&paths, before), None);
         assert!(acquire_lock(&paths, before, &other).taken().is_some());
@@ -519,6 +546,18 @@ mod tests {
         let running = list_wrappers(&paths);
         assert_eq!(running.len(), 1);
         assert_eq!(running[0]["wrapper"], "w1");
+        // A record older than the process that has its number now is of a wrapper long gone.
+        let now = crate::clock::now_ms();
+        for (wrapper, started, runs) in [("w8", now - 8 * DAY, false), ("w9", now, true)] {
+            write_json_atomic(
+                &wrapper_file(&paths, wrapper),
+                &json!({ "pid": me(), "wrapper": wrapper, "startedAt": iso(started) }),
+            )
+            .unwrap();
+            let listed = list_wrappers(&paths).iter().any(|w| w["wrapper"] == wrapper);
+            assert_eq!(listed, runs, "{wrapper}");
+            remove_wrapper(&paths, wrapper);
+        }
         remove_wrapper(&paths, "w1");
         assert!(list_wrappers(&paths).is_empty());
         assert!(!wrapper_session_file(&paths, "w1").exists());

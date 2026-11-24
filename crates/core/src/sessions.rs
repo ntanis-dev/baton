@@ -35,7 +35,7 @@ use crate::fsutil::{
 use crate::json::Get;
 use crate::oslock::{OsLock, is_held};
 use crate::paths::{Paths, is_id};
-use crate::sys::started_at;
+use crate::sys::wrote_at;
 use crate::usage::TurnSample;
 
 /// Whether `id` can be a session's or a wrapper's id.
@@ -138,8 +138,7 @@ impl Lock {
     }
 }
 
-/// How much later than its record a process may have started and still be the one that wrote it:
-/// clocks are set, and some systems tell a start to the second only.
+/// How much later than its record a process may have started and still be the one that wrote it.
 const START_SLACK: Ms = 60_000;
 
 /// Whether the process a record names is alive: what tells of a wrapper from before the locks were
@@ -147,17 +146,17 @@ const START_SLACK: Ms = 60_000;
 /// this is asked only where there is no lock to ask, and a process that started after the record was
 /// written (`at`, or a wrapper's `startedAt`) is another one that got the number since.
 fn alive_pid(record: &Value) -> bool {
-    let Some(pid) = record.int("pid").filter(|pid| is_alive(*pid)) else {
+    let Some(pid) = record.int("pid") else {
         return false;
     };
     let written = record
         .text("at")
         .or_else(|| record.text("startedAt"))
         .and_then(parse_ms);
-    match (written, started_at(pid)) {
-        (Some(written), Some(started)) => started <= written + START_SLACK,
-        // Where either is not known, the process being there is all there is to go by.
-        _ => true,
+    match written {
+        Some(written) => wrote_at(pid, written, START_SLACK),
+        // A record that does not say when it was written: the process being there is all there is.
+        None => is_alive(pid),
     }
 }
 

@@ -54,6 +54,23 @@ pub fn started_at(pid: i64) -> Option<crate::clock::Ms> {
     started(pid as u32)
 }
 
+/// Whether process `pid` can be the one that wrote, at `written`, a record that names it: it is there,
+/// and it started no later than that, `slack` aside (clocks are set, and some systems tell a start to
+/// the second only).
+///
+/// Windows tells the start of every process this user may ask about: one it keeps to itself is the
+/// system's or someone else's, and wrote none of this user's records. Elsewhere `ps` tells it of every
+/// process, and where even that cannot be asked, the process being there is all there is to go by.
+pub fn wrote_at(pid: i64, written: crate::clock::Ms, slack: crate::clock::Ms) -> bool {
+    if !is_alive(pid) {
+        return false;
+    }
+    match started_at(pid) {
+        Some(started) => started <= written.saturating_add(slack),
+        None => !cfg!(windows),
+    }
+}
+
 #[cfg(windows)]
 fn started(pid: u32) -> Option<crate::clock::Ms> {
     use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
@@ -751,6 +768,17 @@ mod tests {
         assert_eq!(started_at(0), None);
         assert_eq!(started_at(-4), None);
         assert_eq!(started_at(i64::MAX), None);
+        // It can have written a record of just now, and none of last week: it was not there then.
+        let me = i64::from(std::process::id());
+        assert!(wrote_at(me, now, 60_000));
+        assert!(wrote_at(me, started, 0));
+        assert!(!wrote_at(me, now - 8 * 86_400_000, 60_000));
+        assert!(!wrote_at(0, now, 60_000));
+        // The system's own process is there, and tells this user nothing: it wrote no record of ours.
+        if cfg!(windows) {
+            assert!(is_alive(4));
+            assert!(!wrote_at(4, now, 60_000));
+        }
     }
 
     #[test]

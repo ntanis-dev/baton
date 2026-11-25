@@ -67,7 +67,9 @@ baton view                          # or open the menu
 sense: moments as ISO times and numbers as numbers, and a failure as `{ "error": ..., "code": ... }` on stdout with
 the same exit code. An argument a command has no use for is an error, not passed over. An option that is on or off
 stands alone for on (`--last-resort`, `--full-sync`) or takes `on` or `off`. To start with a prompt, put `start` first: `baton start "fix the tests"`. `baton` stays out of the way: Ctrl+C,
-Esc and `/exit` all go to Claude Code. Running `claude` directly still works; Baton just does not move it.
+Esc and `/exit` all go to Claude Code. Running `claude` directly still works; Baton just does not move it. An option
+of Claude's that Baton does not know yet takes the word after it as its value, and keeps it when the conversation
+moves; when it takes none, put the prompt before it.
 
 Accounts have an order and a mark: **preferred**, **normal** or **last resort** (used only when every other account is
 blocked). Each can have its own thresholds, by default 90% of the 5-hour window and 95% of the weekly one.

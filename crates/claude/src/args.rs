@@ -185,8 +185,8 @@ enum Kind {
     Optional,
     /// Every token up to the next option.
     Variadic,
-    /// Not an option Baton knows (a Claude Code newer than its tables): the token after it is taken
-    /// for its value when more follows, and for the prompt when it is the last one.
+    /// Not an option Baton knows (a Claude Code newer than its tables): the token after it, when it
+    /// is no option, is taken for its value, also when it is the last one.
     Unknown,
 }
 
@@ -350,9 +350,10 @@ pub fn parse_claude_args(args: &[String]) -> ParsedArgs {
                 values.push(args[i].clone());
                 raw.push(args[i].clone());
             }
-        } else if takes == Kind::Unknown && i + 2 < args.len() && !is_flag(&args[i + 1]) {
-            // A token with more after it is no prompt: it goes with the option, also on a resume,
-            // where an option left without its value would take the next token for it.
+        } else if takes == Kind::Unknown && i + 1 < args.len() && !is_flag(&args[i + 1]) {
+            // The token goes with the option, also on a resume, where an option left without its
+            // value would take the next token for it. Write `--flag=value`, or the prompt before the
+            // option, to tell them apart.
             i += 1;
             values.push(args[i].clone());
             raw.push(args[i].clone());
@@ -544,7 +545,7 @@ mod tests {
     }
 
     #[test]
-    fn an_option_baton_does_not_know_keeps_the_token_after_it_unless_that_is_the_prompt() {
+    fn an_option_baton_does_not_know_keeps_the_token_after_it() {
         let live = Live::default();
         // More follows the token: it is the option's value, and stays with it on a resume.
         let parsed = parse_claude_args(&args(&["--newer", "value", "--model", "opus", "do this"]));
@@ -555,14 +556,18 @@ mod tests {
             resume_args(&parsed, "sid", Some("note"), &live),
             ["--newer", "value", "--model", "opus", "--resume", "sid", "note"]
         );
-        // The last token is the prompt, whatever stands before it.
-        let parsed = parse_claude_args(&args(&["--newer", "do this"]));
-        assert!(parsed.guessed.is_empty());
-        assert_eq!(parsed.positionals, ["do this"]);
+        // Also when it is the last token.
+        let parsed = parse_claude_args(&args(&["--newer", "value"]));
+        assert_eq!(parsed.guessed, ["--newer"]);
+        assert!(parsed.positionals.is_empty());
         assert_eq!(
             resume_args(&parsed, "sid", Some("note"), &live),
-            ["--newer", "--resume", "sid", "note"]
+            ["--newer", "value", "--resume", "sid", "note"]
         );
+        // An option after it takes nothing from it.
+        let parsed = parse_claude_args(&args(&["--newer", "--model", "opus"]));
+        assert!(parsed.guessed.is_empty());
+        assert_eq!(parsed.options[0].raw, ["--newer"]);
         // Written with `=` there is nothing to guess.
         let parsed = parse_claude_args(&args(&["--newer=value", "do this"]));
         assert!(parsed.guessed.is_empty());

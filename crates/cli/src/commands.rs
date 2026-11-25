@@ -10,13 +10,14 @@ use baton_core::config::{
     By, Config, Policy, effective_policy, find_account, load_config, loose_f64, name_of,
 };
 use baton_core::format::{NO_ACCOUNTS, status_view};
+use baton_core::history::History;
 use baton_core::hop::{HopRequest, hop};
 use baton_core::json::{Get, Object, num, parse, show};
 use baton_core::paths::{Paths, profile_env};
 use baton_core::policy::pick_start;
 use baton_core::poll::request_poll;
 use baton_core::state::{Want, load_snapshot};
-use baton_core::stats::compute_stats;
+use baton_core::stats::compute_stats_with;
 use baton_install::hooks::{
     CONFIG_CHANGE, StatusLine, append_usage, baton_account, columns_of, config_notice, handle_hook,
     handle_status_line, run_previous_status_line,
@@ -29,7 +30,7 @@ use baton_profile::accounts::{
 use baton_profile::profile::{LinkOptions, link_profile};
 use baton_profile::shared::{sync_everything, sync_shared, take_everything};
 use baton_profile::sync::{Apply, HOME, full_sync, grants, revoke};
-use baton_tui::data::load_menu_data;
+use baton_tui::data::{load_menu_data, load_menu_data_with};
 use baton_tui::{MenuOptions, SignInOptions, run_menu, sign_in};
 use serde_json::{Value, json};
 
@@ -736,11 +737,20 @@ fn run_stats(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
     let paths = ctx.paths.clone();
     let now = (ctx.io.now)();
     let config = load_config(&paths);
-    let stats = compute_stats(&paths, &config, &effective_policy(&config), now, days as i64);
+    // One reading of the history for the numbers and the screen around them.
+    let mut history = History::new();
+    let stats = compute_stats_with(
+        &paths,
+        &config,
+        &effective_policy(&config),
+        now,
+        days as i64,
+        &mut history,
+    );
     Ok(Outcome {
         data: data(&stats),
         screen: Some(Box::new(move |term| {
-            screens::stats_screen(term, load_menu_data(&paths, now), stats)
+            screens::stats_screen(term, load_menu_data_with(&paths, now, &mut history), stats)
         })),
         ..Outcome::default()
     })

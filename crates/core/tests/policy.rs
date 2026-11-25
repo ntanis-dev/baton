@@ -714,6 +714,9 @@ fn turn_cost_and_burn_rate_leave_out_what_other_sessions_added_to_the_account_me
         rise(42 * M, 9.0, Some("other"), "b"),
         rise(55 * M, 9.0, Some("other"), "a"),
     ];
+    // Oldest first, as the history gives them.
+    let mut rises = rises;
+    rises.sort_by_key(|rise| rise.at);
     let others = Others {
         rises: &rises,
         session: "mine",

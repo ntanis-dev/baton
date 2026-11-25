@@ -9,6 +9,7 @@ pub mod config;
 pub mod env;
 pub mod format;
 pub mod fsutil;
+pub mod history;
 pub mod hop;
 pub mod json;
 pub mod lines;

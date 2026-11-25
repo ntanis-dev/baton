@@ -5,9 +5,9 @@
 //! in, asking an account's usage) runs on a thread of its own and sends its answer back as a
 //! [`Msg`]; whoever owns the store takes the messages and hands them to [`Store::handle`].
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -16,6 +16,7 @@ use baton_core::clock::{Ms, local, now_ms, parse_ms};
 use baton_core::config::{By, load_config, name_of};
 use baton_core::env::Env;
 use baton_core::format::poll_words;
+use baton_core::history::History;
 use baton_core::hop::{HopRequest, hop};
 use baton_core::json::{Object, opt_num};
 use baton_core::paths::Paths;
@@ -27,7 +28,7 @@ use baton_profile::accounts::{
 };
 use serde_json::json;
 
-use crate::data::{MenuData, load_menu_data};
+use crate::data::{MenuData, load_menu_data, load_menu_data_with};
 use crate::layout::Size;
 use crate::reducer::reduce_at;
 use crate::state::{Action, Auth, Effect, Init, Op, State, initial_state};
@@ -118,11 +119,21 @@ impl StoreOptions {
             color: true,
             glyphs: GlyphSet::Rich,
             splash: false,
-            load: Arc::new(load_menu_data),
+            load: kept_history_load(),
             auth_of: None,
             refresh: None,
         }
     }
+}
+
+/// The menu's own [`LoadFn`]: [`load_menu_data_with`] through one history kept from one look to the
+/// next, which then reads only what was added to the history since.
+fn kept_history_load() -> LoadFn {
+    let history = Mutex::new(History::new());
+    Arc::new(move |paths: &Paths, now: Ms| match history.lock() {
+        Ok(mut history) => load_menu_data_with(paths, now, &mut history),
+        Err(_) => load_menu_data(paths, now),
+    })
 }
 
 impl std::fmt::Debug for StoreOptions {

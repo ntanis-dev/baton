@@ -8,13 +8,14 @@ use std::collections::BTreeMap;
 
 use baton_core::clock::{DAY, Ms, ms_of};
 use baton_core::config::{Config, Policy, name_of};
+use baton_core::history::History;
 use baton_core::json::Get;
 use baton_core::paths::Paths;
 use baton_core::policy::{AccountState, burn_rate, pick_start, turn_cost};
 use baton_core::sessions::{read_session_file, read_turn_samples};
 use baton_core::state::{PollSnapshot, Snapshot, Want, load_snapshot};
-use baton_core::stats::{HopView, Stats, compute_stats};
-use baton_core::usage::{Others, Reading, Rise, read_rises};
+use baton_core::stats::{HopView, Stats, compute_stats_with};
+use baton_core::usage::{Others, RISE_LOOKBACK, Reading, Rise, rises_in};
 use baton_core::window::PerWindow;
 use baton_profile::shared::every_question;
 use serde_json::Value;
@@ -189,6 +190,12 @@ fn session_info(
 
 /// Reads everything the menu shows, at `now`.
 pub fn load_menu_data(paths: &Paths, now: Ms) -> MenuData {
+    load_menu_data_with(paths, now, &mut History::new())
+}
+
+/// [`load_menu_data`], reading the history through `history`: the menu keeps one from one look to the
+/// next, so that each reads only what was added to the history since.
+pub fn load_menu_data_with(paths: &Paths, now: Ms, history: &mut History) -> MenuData {
     let snapshot = load_snapshot(
         paths,
         now,
@@ -197,9 +204,14 @@ pub fn load_menu_data(paths: &Paths, now: Ms) -> MenuData {
             poll: true,
         },
     );
-    let stats = compute_stats(paths, &snapshot.config, &snapshot.policy, now, 7);
-    // What each session used is its account's rise less what the other sessions on it added.
-    let rises = read_rises(paths, now - 7 * DAY, now);
+    let stats = compute_stats_with(paths, &snapshot.config, &snapshot.policy, now, 7, history);
+    // What each session used is its account's rise less what the other sessions on it added. The
+    // readings are those the statistics just read.
+    let rises = rises_in(
+        &history.lines("readings", now - 7 * DAY - RISE_LOOKBACK, now),
+        now - 7 * DAY,
+        now,
+    );
     let mut ids: Vec<String> = Vec::new();
     let mut wrappers: Vec<(String, &Value)> = Vec::new();
     for w in snapshot.wrappers.iter().flatten() {

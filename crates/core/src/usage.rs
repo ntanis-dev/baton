@@ -411,17 +411,25 @@ pub struct Rise {
     pub session: Option<String>,
 }
 
+/// How far before the first moment of interest the readings a rise is measured against go back: the
+/// longest window, a week, and a little. An older reading is of another period of every window.
+pub const RISE_LOOKBACK: Ms = 7 * crate::clock::DAY + HOUR;
+
 /// The rises recorded between two moments, oldest first, from the history of the readings. Each
 /// change of a window is one line there, with the session that reported it.
 pub fn read_rises(paths: &Paths, from: Ms, to: Ms) -> Vec<Rise> {
-    // The reading before `from` is what the first rise is measured against.
-    let mut lines: Vec<(Ms, Value)> = crate::clock::utc_months(from - crate::clock::DAY, to)
-        .into_iter()
-        .flat_map(|month| crate::fsutil::read_json_lines(&history_file(paths, "readings", month)))
-        .filter_map(|line| Some((parse_ms(line.text("at")?)?, line)))
-        .filter(|(at, _)| *at <= to)
-        .collect();
-    lines.sort_by_key(|(at, _)| *at);
+    let mut history = crate::history::History::new();
+    history.update(paths, "readings", from - RISE_LOOKBACK, to);
+    rises_in(&history.lines("readings", from - RISE_LOOKBACK, to), from, to)
+}
+
+/// The rises between two moments in these readings (oldest first, from [`RISE_LOOKBACK`] before
+/// `from`): the reading before `from` is what the first rise is measured against.
+pub fn rises_in(lines: &[&Value], from: Ms, to: Ms) -> Vec<Rise> {
+    let lines = lines
+        .iter()
+        .filter_map(|line| Some((parse_ms(line.text("at")?)?, *line)))
+        .filter(|(at, _)| *at <= to);
     let mut last: BTreeMap<(String, &'static str), (f64, Option<String>)> = BTreeMap::new();
     let mut out = Vec::new();
     for (at, line) in lines {
@@ -455,7 +463,7 @@ pub fn read_rises(paths: &Paths, from: Ms, to: Ms) -> Vec<Rise> {
 /// together, so what they added while a turn of this one ran is not that turn's cost.
 #[derive(Clone, Copy, Debug)]
 pub struct Others<'a> {
-    /// The rises of the time in question.
+    /// The rises of the time in question, oldest first ([`read_rises`] and [`rises_in`] give them so).
     pub rises: &'a [Rise],
     /// The session whose own use is being worked out.
     pub session: &'a str,
@@ -471,13 +479,14 @@ impl Others<'_> {
     /// What other sessions added to `window` of `account` after `after`, up to and at `until`. A
     /// rise a poll reported is nobody's in particular, and stays with the session.
     pub fn between(&self, account: Option<&str>, window: Window, after: Ms, until: Ms) -> f64 {
-        self.rises
+        // Oldest first: the rises of the time asked about are one stretch of them.
+        let first = self.rises.partition_point(|rise| rise.at <= after);
+        let end = self.rises.partition_point(|rise| rise.at <= until).max(first);
+        self.rises[first..end]
             .iter()
             .filter(|rise| {
                 Some(rise.account.as_str()) == account
                     && rise.window == window
-                    && rise.at > after
-                    && rise.at <= until
                     && rise.session.as_deref().is_some_and(|other| other != self.session)
             })
             .map(|rise| rise.by)
@@ -1235,6 +1244,39 @@ mod tests {
         assert_eq!(others.between(Some("work"), Window::SevenDay, T0, T0 + HOUR), 0.0);
         assert_eq!(others.between(None, Window::FiveHour, T0, T0 + HOUR), 0.0);
         assert!(read_rises(&baton_paths(dir.path().join("none")), T0, T0 + HOUR).is_empty());
+    }
+
+    #[test]
+    fn a_weekly_rise_is_measured_against_a_reading_days_before() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = baton_paths(dir.path());
+        let record = |at: Ms, used: f64| {
+            record_reading(
+                &paths,
+                "work",
+                &PerWindow {
+                    five_hour: None,
+                    seven_day: sample(used, Some(T0 + 4 * DAY)),
+                },
+                RecordOptions {
+                    session: Some("one".to_owned()),
+                    source: "statusline".to_owned(),
+                    refresh_ms: 0,
+                    ..RecordOptions::at(at)
+                },
+            );
+        };
+        // The account was not used for three days, then was.
+        record(T0 - 3 * DAY, 10.0);
+        record(T0 + 1000, 12.0);
+        let rises = read_rises(&paths, T0, T0 + HOUR);
+        assert_eq!(
+            rises
+                .iter()
+                .map(|rise| (rise.window, rise.by))
+                .collect::<Vec<_>>(),
+            [(Window::SevenDay, 2.0)]
+        );
     }
 
     #[test]

@@ -10,28 +10,20 @@ use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use serde_json::Value;
 
-use crate::clock::{DAY, Ms, iso, local_date, local_days, ms_of, parse_ms, utc_months};
+use crate::clock::{DAY, Ms, iso, local_date, local_days, ms_of, parse_ms};
 use crate::config::{Config, Mark, Policy, name_of, thresholds};
-use crate::fsutil::read_json_lines;
+use crate::history::History;
 use crate::json::{Get, ser_num, ser_opt_num};
 use crate::paths::Paths;
 use crate::policy::turn_cost;
 use crate::sessions::read_turn_samples;
-use crate::usage::{Others, history_file, read_rises, same_period};
+use crate::usage::{Others, RISE_LOOKBACK, rises_in, same_period};
 use crate::window::PerWindow;
 
-/// The history of `kind` between two moments, oldest first.
-pub fn read_history(paths: &Paths, kind: &str, from: Ms, to: Ms) -> Vec<Value> {
-    let mut out: Vec<(Ms, Value)> = utc_months(from, to)
-        .into_iter()
-        .flat_map(|month| read_json_lines(&history_file(paths, kind, month)))
-        .filter_map(|line| {
-            let at = ms_of(line.at("at"))?;
-            (at >= from && at <= to).then_some((at, line))
-        })
-        .collect();
-    out.sort_by_key(|(at, _)| *at);
-    out.into_iter().map(|(_, line)| line).collect()
+/// The first moment of the readings the statistics of `days` days up to `now` read: a week before
+/// the period, for the weekly windows that reset in it, and what their rises are measured against.
+pub fn stats_from(now: Ms, days: i64) -> Ms {
+    now - days * DAY - RISE_LOOKBACK
 }
 
 /// A move of a conversation, for showing.
@@ -191,6 +183,19 @@ fn starts_a_session(event: &Value) -> bool {
 
 /// The statistics of the last `days` days up to `now`.
 pub fn compute_stats(paths: &Paths, config: &Config, policy: &Policy, now: Ms, days: i64) -> Stats {
+    compute_stats_with(paths, config, policy, now, days, &mut History::new())
+}
+
+/// [`compute_stats`], reading the history through `history`: one kept from one look to the next
+/// reads only what was added since. It holds the readings from [`stats_from`] on afterwards.
+pub fn compute_stats_with(
+    paths: &Paths,
+    config: &Config,
+    policy: &Policy,
+    now: Ms,
+    days: i64,
+    history: &mut History,
+) -> Stats {
     let since = now - days * DAY;
     // The history keeps account ids; what it shows is their current names.
     let label = |id: Option<&str>| id.map(|id| name_of(config, id)).unwrap_or_default();
@@ -205,11 +210,20 @@ pub fn compute_stats(paths: &Paths, config: &Config, policy: &Policy, now: Ms, d
         reason: own(e.text("reason")),
     };
     // Weekly windows that reset in the period started up to a week earlier.
-    let readings = read_history(paths, "readings", since - 7 * DAY, now);
-    let events = read_history(paths, "events", since, now);
+    history.update(paths, "readings", stats_from(now, days), now);
+    history.update(paths, "events", since, now);
+    let readings = history.lines("readings", since - 7 * DAY, now);
+    let events = history.lines("events", since, now);
     // What a session used is its account's rise less what the other sessions on it added meanwhile.
-    let rises = read_rises(paths, since, now);
-    let day_of = |line: &Value| ms_of(line.at("at")).map(local_date).unwrap_or_default();
+    let rises = rises_in(&history.lines("readings", since - RISE_LOOKBACK, now), since, now);
+    // Each line's local date, worked out once: the days below look it up for every account.
+    let dated = |lines: &[&'_ Value]| -> Vec<String> {
+        lines
+            .iter()
+            .map(|line| ms_of(line.at("at")).map(local_date).unwrap_or_default())
+            .collect()
+    };
+    let (reading_days, event_days) = (dated(&readings), dated(&events));
     let kind = |e: &Value, kind: &str| e.text("type") == Some(kind);
     let dates = local_days(now, days);
     let per_day = || {
@@ -224,8 +238,8 @@ pub fn compute_stats(paths: &Paths, config: &Config, policy: &Policy, now: Ms, d
         sessions: per_day(),
     };
     let mut hop_reasons: Vec<(String, usize)> = Vec::new();
-    for e in &events {
-        let date = day_of(e);
+    for (e, date) in events.iter().zip(&event_days) {
+        let date = date.clone();
         if !totals.hops.contains_key(&date) {
             continue;
         }
@@ -248,17 +262,28 @@ pub fn compute_stats(paths: &Paths, config: &Config, policy: &Policy, now: Ms, d
         .map(|account| {
             let limit = thresholds(account, policy);
             let id = Some(account.id.as_str());
-            let mine: Vec<&Value> = readings.iter().filter(|r| r.text("account") == id).collect();
+            let mine_dated: Vec<(&Value, &String)> = readings
+                .iter()
+                .copied()
+                .zip(&reading_days)
+                .filter(|(r, _)| r.text("account") == id)
+                .collect();
+            let mine: Vec<&Value> = mine_dated.iter().map(|(r, _)| *r).collect();
             let count = |date: &str, what: &str, field: &str| {
                 events
                     .iter()
-                    .filter(|e| kind(e, what) && e.text(field) == id && day_of(e) == date)
+                    .zip(&event_days)
+                    .filter(|(e, day)| kind(e, what) && e.text(field) == id && day.as_str() == date)
                     .count()
             };
             let daily: Vec<DayStats> = dates
                 .iter()
                 .map(|date| {
-                    let day: Vec<&&Value> = mine.iter().filter(|r| &day_of(r) == date).collect();
+                    let day: Vec<&Value> = mine_dated
+                        .iter()
+                        .filter(|(_, day)| *day == date)
+                        .map(|(r, _)| *r)
+                        .collect();
                     let of = |window: &str| -> Vec<f64> {
                         day.iter()
                             .filter(|r| r.text("window") == Some(window))
@@ -329,7 +354,11 @@ pub fn compute_stats(paths: &Paths, config: &Config, policy: &Policy, now: Ms, d
     let sessions = ids
         .into_iter()
         .map(|id| {
-            let mine: Vec<&Value> = events.iter().filter(|e| e.text("session") == Some(id)).collect();
+            let mine: Vec<&Value> = events
+                .iter()
+                .copied()
+                .filter(|e| e.text("session") == Some(id))
+                .collect();
             let samples = read_turn_samples(paths, id);
             let mut on: Vec<&str> = Vec::new();
             for e in &mine {
@@ -363,7 +392,7 @@ pub fn compute_stats(paths: &Paths, config: &Config, policy: &Policy, now: Ms, d
             }
         })
         .collect();
-    let all_hops: Vec<&Value> = events.iter().filter(|e| kind(e, "hop")).collect();
+    let all_hops: Vec<&Value> = events.iter().copied().filter(|e| kind(e, "hop")).collect();
     Stats {
         since: iso(since),
         until: iso(now),
@@ -387,6 +416,7 @@ mod tests {
     use crate::fsutil::append_json_line;
     use crate::paths::baton_paths;
     use crate::sessions::append_turn_sample;
+    use crate::usage::history_file;
     use serde_json::json;
 
     #[test]

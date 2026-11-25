@@ -315,11 +315,15 @@ renamed or signed in, and when you ask (`r` in the menu, or `baton usage --refre
 ~/.baton/probe/                   the folder usage checks run in (no transcripts kept)
 ~/.baton/rejected/                refusals per account and window
 ~/.baton/sessions/<id>/           per-conversation state from the hooks and status line
-~/.baton/history/                 append-only readings and events (moves, refusals, sessions)
+~/.baton/history/                 append-only readings and events (moves, refusals, sessions), a file a month
 ~/.baton/install.json, backups/   what baton install did, and what a sync or an install replaced
 ~/.baton/sync.json                what the accounts agree on in .claude.json, what Baton last saw in each, open questions
 ~/.baton/shared/                  the same for the shared files the profiles hold copies of
 ```
+
+The history is plain JSON lines, one file a month, in the order things happened. Stats read a file from the first
+line of the days they cover (found by a search of the file, not by reading it from the top), and the menu reads
+only what was added since it last looked.
 
 What you write into `config.json` yourself stays: a key Baton does not know is kept as it is. A file that cannot be
 read (a comma too many after a hand edit) is never saved over as an empty one: `baton`, the status line and

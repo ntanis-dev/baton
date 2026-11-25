@@ -277,8 +277,7 @@ pub fn build_home(paths: &Paths, all_blocked: bool) {
             .unwrap()
             .extend(extra.as_object().unwrap().clone());
         write_json_atomic(&paths.wrappers.join(format!("{wrapper}.json")), &record).unwrap();
-        // It runs: it holds its lock, as a wrapper does, for as long as this process is there. (Its
-        // process id alone would not do: this process started long after the record says it did.)
+        // It runs: it holds its lock, as a wrapper does, for as long as this process is there.
         if let Some(lock) = baton_core::sessions::hold_wrapper(paths, wrapper) {
             std::mem::forget(lock);
         }

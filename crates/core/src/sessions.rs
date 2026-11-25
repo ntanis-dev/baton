@@ -27,15 +27,13 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::clock::{DAY, HOUR, Ms, iso, ms_of, parse_ms};
+use crate::clock::{DAY, HOUR, Ms, iso, ms_of};
 use crate::fsutil::{
-    append_json_line, is_alive, mtime_ms, read_json, read_json_lines, remove_file, remove_tree,
-    write_json_atomic,
+    append_json_line, mtime_ms, read_json, read_json_lines, remove_file, remove_tree, write_json_atomic,
 };
 use crate::json::Get;
 use crate::oslock::{OsLock, is_held};
 use crate::paths::{Paths, is_id};
-use crate::sys::wrote_at;
 use crate::usage::TurnSample;
 
 /// Whether `id` can be a session's or a wrapper's id.
@@ -138,28 +136,6 @@ impl Lock {
     }
 }
 
-/// How much later than its record a process may have started and still be the one that wrote it.
-const START_SLACK: Ms = 60_000;
-
-/// Whether the process a record names is alive: what tells of a wrapper from before the locks were
-/// the operating system's, which holds none. A process id is given anew once its process is gone, so
-/// this is asked only where there is no lock to ask, and a process that started after the record was
-/// written (`at`, or a wrapper's `startedAt`) is another one that got the number since.
-fn alive_pid(record: &Value) -> bool {
-    let Some(pid) = record.int("pid") else {
-        return false;
-    };
-    let written = record
-        .text("at")
-        .or_else(|| record.text("startedAt"))
-        .and_then(parse_ms);
-    match written {
-        Some(written) => wrote_at(pid, written, START_SLACK),
-        // A record that does not say when it was written: the process being there is all there is.
-        None => is_alive(pid),
-    }
-}
-
 /// The per-session lock: one wrapper drives a conversation at a time. The lock is the operating
 /// system's, so a wrapper that died holds nothing; `owner` (`{ pid, wrapper, at, account }`) is written
 /// beside it for `baton hop` to find the wrapper.
@@ -167,9 +143,6 @@ pub fn acquire_lock(paths: &Paths, id: &str, owner: &Value) -> Lock {
     let (Some(target), Some(record)) = (file(paths, id, "lock"), file(paths, id, "lock.json")) else {
         return Lock::Failed(format!("Not a session id: {id}"));
     };
-    if let Some(holder) = earlier_holder(paths, id) {
-        return Lock::Held(holder);
-    }
     // Someone only asking whether it is held ([`lock_holder`]) has it for an instant: ask again.
     for attempt in 0..3 {
         match OsLock::try_take(&target) {
@@ -191,18 +164,9 @@ pub fn acquire_lock(paths: &Paths, id: &str, owner: &Value) -> Lock {
     Lock::Held(read_json(&record).unwrap_or(Value::Null))
 }
 
-/// The record of a wrapper from before the lock was the operating system's, while it runs: it wrote
-/// who it is and holds no lock, so the session has a record and no lock file.
-fn earlier_holder(paths: &Paths, id: &str) -> Option<Value> {
-    if file(paths, id, "lock")?.exists() {
-        return None;
-    }
-    read_session_file(paths, id, "lock.json").filter(alive_pid)
-}
-
 /// Whether a wrapper holds the session's lock now.
 pub fn is_locked(paths: &Paths, id: &str) -> bool {
-    file(paths, id, "lock").is_some_and(|target| is_held(&target)) || earlier_holder(paths, id).is_some()
+    file(paths, id, "lock").is_some_and(|target| is_held(&target))
 }
 
 /// The holder of a session's lock: its record, while it holds the lock.
@@ -228,25 +192,20 @@ fn wrapper_lock_file(paths: &Paths, wrapper: &str) -> PathBuf {
 }
 
 /// Takes the lock that says a wrapper runs; it is kept until the wrapper ends. None when it could not
-/// be taken: the wrapper then counts as running for as long as its process is there.
+/// be taken: the wrapper then does not count as running, and cannot be asked to move its conversation.
 pub fn hold_wrapper(paths: &Paths, wrapper: &str) -> Option<OsLock> {
     OsLock::try_take(&wrapper_lock_file(paths, wrapper))
         .ok()
         .flatten()
 }
 
-/// Whether the wrapper of a record runs: it holds its lock. One with no lock (it could not take one,
-/// or is from before there was one) runs while its process is alive.
+/// Whether the wrapper of a record runs: it holds its lock. A process id says nothing here: the
+/// system gives it anew once its process is gone, so a dead wrapper's would name another program.
 fn wrapper_runs(paths: &Paths, record: &Value) -> bool {
-    let lock = record
+    record
         .text("wrapper")
         .filter(|wrapper| valid_id(wrapper))
-        .map(|wrapper| wrapper_lock_file(paths, wrapper))
-        .filter(|lock| lock.exists());
-    match lock {
-        Some(lock) => is_held(&lock),
-        None => alive_pid(record),
-    }
+        .is_some_and(|wrapper| is_held(&wrapper_lock_file(paths, wrapper)))
 }
 
 /// The wrappers that run now.
@@ -496,25 +455,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(lock_holder(&paths, ID), None);
-        // A wrapper from before the lock was the system's wrote its record only: it holds the session
-        // while its process is there.
+        // A record with no lock beside it holds nothing either, even when its process id is a live
+        // process's: the system gives a number anew once its process is gone.
         let before = "0a1b2c3d-0000-4000-8000-000000000001";
-        let earlier = json!({ "pid": me(), "wrapper": "w0", "account": "work" });
+        let earlier = json!({ "pid": me(), "wrapper": "w0", "at": iso(crate::clock::now_ms()) });
         write_session_file(&paths, before, "lock.json", &earlier).unwrap();
-        assert_eq!(lock_holder(&paths, before), Some(earlier.clone()));
-        assert!(matches!(acquire_lock(&paths, before, &other), Lock::Held(holder) if holder == earlier));
-        // Its record says when it was written. A process that started after that is not the wrapper:
-        // the system gave its number to another one since (days later, to anything at all).
-        let now = crate::clock::now_ms();
-        let fresh = json!({ "pid": me(), "wrapper": "w0", "at": iso(now) });
-        write_session_file(&paths, before, "lock.json", &fresh).unwrap();
-        assert_eq!(lock_holder(&paths, before), Some(fresh));
-        let stale = json!({ "pid": me(), "wrapper": "w0", "at": iso(now - 8 * DAY) });
-        write_session_file(&paths, before, "lock.json", &stale).unwrap();
         assert_eq!(lock_holder(&paths, before), None);
         assert!(!is_locked(&paths, before));
-        write_session_file(&paths, before, "lock.json", &json!({ "pid": 0, "wrapper": "w0" })).unwrap();
-        assert_eq!(lock_holder(&paths, before), None);
         assert!(acquire_lock(&paths, before, &other).taken().is_some());
         let taken = acquire_lock(&paths, ID, &other).taken().unwrap();
         assert_eq!(lock_holder(&paths, ID).unwrap()["wrapper"], "w2");
@@ -531,9 +478,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = baton_paths(dir.path());
         assert!(list_wrappers(&paths).is_empty());
+        // A record with no lock held: its wrapper is gone, whatever process has its number now.
         write_json_atomic(
             &wrapper_file(&paths, "w1"),
-            &json!({ "pid": me(), "wrapper": "w1" }),
+            &json!({ "pid": me(), "wrapper": "w1", "startedAt": iso(crate::clock::now_ms()) }),
         )
         .unwrap();
         write_json_atomic(
@@ -542,26 +490,10 @@ mod tests {
         )
         .unwrap();
         write_json_atomic(&wrapper_session_file(&paths, "w1"), &json!({ "session": ID })).unwrap();
-        let running = list_wrappers(&paths);
-        assert_eq!(running.len(), 1);
-        assert_eq!(running[0]["wrapper"], "w1");
-        // A record older than the process that has its number now is of a wrapper long gone.
-        let now = crate::clock::now_ms();
-        for (wrapper, started, runs) in [("w8", now - 8 * DAY, false), ("w9", now, true)] {
-            write_json_atomic(
-                &wrapper_file(&paths, wrapper),
-                &json!({ "pid": me(), "wrapper": wrapper, "startedAt": iso(started) }),
-            )
-            .unwrap();
-            let listed = list_wrappers(&paths).iter().any(|w| w["wrapper"] == wrapper);
-            assert_eq!(listed, runs, "{wrapper}");
-            remove_wrapper(&paths, wrapper);
-        }
-        remove_wrapper(&paths, "w1");
         assert!(list_wrappers(&paths).is_empty());
+        remove_wrapper(&paths, "w1");
         assert!(!wrapper_session_file(&paths, "w1").exists());
-        // A wrapper holds its lock while it runs: its record alone says nothing once the lock is free,
-        // even when another process has its number by then.
+        // A wrapper holds its lock while it runs: its record alone says nothing once the lock is free.
         let record = json!({ "pid": me(), "wrapper": "w2" });
         write_json_atomic(&wrapper_file(&paths, "w2"), &record).unwrap();
         let running = hold_wrapper(&paths, "w2").unwrap();

@@ -229,7 +229,7 @@ mod tests {
     use super::*;
     use crate::fsutil::write_json_atomic;
     use crate::paths::baton_paths;
-    use crate::sessions::{acquire_lock, write_session_file};
+    use crate::sessions::{acquire_lock, hold_wrapper, write_session_file};
     use serde_json::{Value, json};
 
     const ID: &str = "6f0b2d4e-1c3a-4b5d-8e9f-0a1b2c3d4e5f";
@@ -278,6 +278,7 @@ mod tests {
         let in_claude = Env::from_pairs([("CLAUDE_CODE_SESSION_ID", ID)]);
         assert_eq!(resolve_session(&paths, None, &in_claude), Ok(ID.to_owned()));
         // The wrapper's own conversation wins over the session a claude inside it reports.
+        let _w1 = hold_wrapper(&paths, "w1").unwrap();
         write_json_atomic(
             &wrapper_file(&paths, "w1"),
             &json!({ "pid": me(), "wrapper": "w1", "session": "held" }),
@@ -292,6 +293,7 @@ mod tests {
         assert_eq!(resolve_session(&paths, None, &wrapped), Ok("held".to_owned()));
         // With nothing else to go by: the only session under baton.
         assert_eq!(resolve_session(&paths, None, &env), Ok("held".to_owned()));
+        let _w2 = hold_wrapper(&paths, "w2").unwrap();
         write_json_atomic(
             &wrapper_file(&paths, "w2"),
             &json!({ "pid": me(), "wrapper": "w2", "session": "other" }),

@@ -130,15 +130,19 @@ and conversations are the same files for every account, and Baton keeps the rest
   keeps both and asks: at the next `baton` start (press the number of the one to keep) or with `baton sync`.
 - **One account cannot take back what you granted.** A folder's trust, an allowed tool or a notice you already answered
   stays on every account when one of them loses it (Claude Code starting its onboarding over, say): that account gets
-  it back. It is gone only once no account holds it any more.
+  it back. It is gone only once no account holds it any more, or when you take it away from all of them at once with
+  `baton sync revoke`.
 
 What is never shared: who an account is (its sign-in and identity), and Claude Code's own caches and counters.
 `~/.claude.json`, plain Claude Code's own file, is only read: what you change there reaches your accounts, never the
-other way round.
+other way round. The one exception is `baton sync revoke`, which takes a grant out of it too, so that plain Claude Code
+loses it as well.
 
 ```sh
 baton sync                          # bring every account in step now; lists what the accounts differ on
 baton sync take 1 "Work account"    # that account's value for question 1 goes to every account
+baton sync grants                   # what the accounts were granted: trusted folders, allowed tools, notices
+baton sync revoke 3                 # takes grant 3 away from every account and from ~/.claude.json
 baton policy --full-sync off        # each account keeps its own; a new one starts from ~/.claude.json
 ```
 

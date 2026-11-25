@@ -289,6 +289,7 @@ fn most_positionals(command: &str, values: &Parsed) -> Option<usize> {
         "hop" | "login" | "usage" | "help" => 1,
         "view" | "status" | "pick" | "stats" | "policy" | "install" | "uninstall" | "doctor" | "version" => 0,
         "sync" if part == Some("take") => 3,
+        "sync" if part == Some("grants") => 1,
         "account" => match part {
             None | Some("list") => 1,
             Some("add" | "remove" | "set") => 2,

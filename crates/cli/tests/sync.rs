@@ -203,6 +203,101 @@ fn home_can_be_the_answer_too() {
 }
 
 #[test]
+fn a_grant_is_listed_and_taken_away_from_every_account_and_home_at_once() {
+    let home = home();
+    claude_writes(&home, "spare", |own| {
+        own["projects"] =
+            json!({ "/work": { "hasTrustDialogAccepted": true, "allowedTools": ["Bash(git:*)"] } });
+    });
+    assert_eq!(baton(&home, &["sync"]).code, 0);
+    let mut plain = read_json(&home.paths.claude_json).unwrap();
+    plain["projects"] = json!({ "/work": { "hasTrustDialogAccepted": true } });
+    write_json(&home.paths.claude_json, &plain);
+    let listed = baton(&home, &["sync", "grants"]);
+    assert_eq!(listed.code, 0);
+    let said = words(&listed.stdout);
+    assert!(
+        said.contains(&"1 /work · allowedTools: \"Bash(git:*)\" Work account, Spare, Third".to_owned()),
+        "{}",
+        listed.stdout
+    );
+    assert!(
+        said.contains(&"2 /work · hasTrustDialogAccepted home, Work account, Spare, Third".to_owned()),
+        "{}",
+        listed.stdout
+    );
+    assert!(
+        said.contains(&"Revoke baton sync revoke <number...>".to_owned()),
+        "{}",
+        listed.stdout
+    );
+    let json = baton(&home, &["sync", "grants", "--json"]).json();
+    assert_eq!(json["grants"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        json["grants"][1]["holders"],
+        json!(["~", "work-account", "spare", "third"])
+    );
+
+    // What cannot be revoked.
+    let none = baton(&home, &["sync", "revoke"]);
+    assert_eq!(
+        (none.code, none.stderr.as_str()),
+        (2, "baton: baton sync revoke <number...>\n")
+    );
+    let far = baton(&home, &["sync", "revoke", "3"]);
+    assert_eq!(
+        (far.code, far.stderr.as_str()),
+        (
+            2,
+            "baton: baton sync revoke takes numbers from 1 to 2, as baton sync grants lists them.\n"
+        )
+    );
+
+    let revoked = baton(&home, &["sync", "revoke", "2"]);
+    assert_eq!(revoked.code, 0, "{}", revoked.stderr);
+    let said = words(&revoked.stdout);
+    assert!(
+        said.iter()
+            .any(|line| line.ends_with("Took 1 grant away from every account.")),
+        "{}",
+        revoked.stdout
+    );
+    assert!(
+        said.contains(&"/work · hasTrustDialogAccepted from home, Work account, Spare, Third".to_owned()),
+        "{}",
+        revoked.stdout
+    );
+    for id in ["work-account", "spare", "third"] {
+        assert_eq!(
+            settings(&home, id)["projects"]["/work"],
+            json!({ "allowedTools": ["Bash(git:*)"] }),
+            "{id}"
+        );
+    }
+    let plain = read_json(&home.paths.claude_json).unwrap();
+    assert_eq!(plain["projects"]["/work"], json!({}));
+    assert_eq!(plain["theme"], "dark");
+    // It stays gone.
+    assert_eq!(baton(&home, &["sync"]).code, 0);
+    assert_eq!(
+        settings(&home, "third")["projects"]["/work"].get("hasTrustDialogAccepted"),
+        None
+    );
+    let json = baton(&home, &["sync", "revoke", "1", "--json"]).json();
+    assert_eq!(
+        json["revoked"][0]["from"],
+        json!(["work-account", "spare", "third"])
+    );
+    assert_eq!(
+        words(&baton(&home, &["sync", "grants"]).stdout)
+            .iter()
+            .filter(|line| line.ends_with("Nothing is granted on any account."))
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn full_sync_is_a_policy_setting_that_is_on_unless_turned_off() {
     let home = home();
     let policy = baton(&home, &["policy", "--json"]).json();

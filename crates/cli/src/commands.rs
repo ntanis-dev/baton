@@ -5,7 +5,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use baton_claude::lead::{LeadOptions, run_lead};
 use baton_claude::poller::{Poller, PollerOptions};
 use baton_core::claude_path::resolve_claude;
-use baton_core::clock::iso;
+use baton_core::clock::{Ms, iso};
 use baton_core::config::{
     By, Config, Policy, effective_policy, find_account, load_config, loose_f64, name_of,
 };
@@ -28,7 +28,7 @@ use baton_profile::accounts::{
 };
 use baton_profile::profile::{LinkOptions, link_profile};
 use baton_profile::shared::{sync_everything, sync_shared, take_everything};
-use baton_profile::sync::{Apply, HOME, full_sync};
+use baton_profile::sync::{Apply, HOME, full_sync, grants, revoke};
 use baton_tui::data::load_menu_data;
 use baton_tui::{MenuOptions, SignInOptions, run_menu, sign_in};
 use serde_json::{Value, json};
@@ -416,6 +416,14 @@ fn run_sync(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
     let now = (ctx.io.now)();
     let config = load_config(&paths);
     let failed = |error: std::io::Error| CliError::Failed(error.to_string());
+    match ctx.values.positional(0) {
+        Some("grants") => return Ok(sync_grants(&paths, &config)),
+        Some("revoke") => {
+            let asked: Vec<String> = ctx.values.positionals.iter().skip(1).cloned().collect();
+            return sync_revoke(&paths, &config, &asked, now);
+        }
+        _ => {}
+    }
     let mut took: Option<(usize, String)> = None;
     let report = match ctx.values.positional(0) {
         None => sync_everything(&paths, &config, Apply::All, now).map_err(failed)?,
@@ -495,6 +503,58 @@ fn run_sync(ctx: &mut Ctx<'_, '_>) -> Result<Outcome, CliError> {
                     name: &name,
                 },
             )
+        }),
+    )
+    .code(code))
+}
+
+/// `baton sync grants`: what the accounts were granted (a folder's trust, an allowed tool, a notice
+/// answered), numbered for `baton sync revoke`.
+fn sync_grants(paths: &Paths, config: &Config) -> Outcome {
+    let listed = grants(paths, config);
+    let value = json!({ "grants": data(&listed) });
+    let config = config.clone();
+    Outcome::shown(
+        value,
+        Box::new(move |term| {
+            let name = |who: &str| party_name(&config, who);
+            screens::grants_screen(term, &listed, &name)
+        }),
+    )
+}
+
+/// `baton sync revoke <number...>`: takes grants away from every account and from `~/.claude.json`.
+fn sync_revoke(paths: &Paths, config: &Config, asked: &[String], now: Ms) -> Result<Outcome, CliError> {
+    const USAGE: &str = "baton sync revoke <number...>";
+    if asked.is_empty() {
+        return Err(usage(USAGE));
+    }
+    let listed = grants(paths, config);
+    if listed.is_empty() {
+        return Err(usage("Nothing is granted on any account."));
+    }
+    let mut leaves: Vec<String> = Vec::new();
+    for which in asked {
+        let at = which.parse::<usize>().ok().and_then(|n| n.checked_sub(1));
+        let Some(grant) = at.and_then(|at| listed.get(at)) else {
+            return Err(usage(format!(
+                "baton sync revoke takes numbers from 1 to {}, as baton sync grants lists them.",
+                listed.len()
+            )));
+        };
+        if !leaves.contains(&grant.leaf) {
+            leaves.push(grant.leaf.clone());
+        }
+    }
+    let report = revoke(paths, config, &leaves, now).map_err(|error| CliError::Failed(error.to_string()))?;
+    let code = if report.busy { 1 } else { 0 };
+    let value = data(&report).unwrap_or(Value::Null);
+    let config = config.clone();
+    Ok(Outcome::shown(
+        value,
+        Box::new(move |term| {
+            let name = |who: &str| party_name(&config, who);
+            screens::revoke_screen(term, &report, &name)
         }),
     )
     .code(code))
@@ -947,12 +1007,14 @@ pub fn commands() -> Vec<Command> {
             usage: vec![
                 "baton sync [--json]".to_owned(),
                 "baton sync take <number|all> <account|home>".to_owned(),
+                "baton sync grants".to_owned(),
+                "baton sync revoke <number...>".to_owned(),
             ],
             ..command(
                 "sync",
                 "accounts",
                 &[],
-                "Keep what you set up (preferences, MCP servers, each folder's trust and approvals) the same on every account: bring every account in step now, show what the accounts differ on, and say whose value stays (take).",
+                "Keep what you set up (preferences, MCP servers, each folder's trust and approvals) the same on every account: bring every account in step now, show what the accounts differ on, and say whose value stays (take). What one account was granted (a folder's trust, an allowed tool) goes to every account and never back by itself: list it (grants) and take it away from every account and ~/.claude.json at once (revoke).",
                 run_sync,
             )
         },

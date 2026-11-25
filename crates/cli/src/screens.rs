@@ -18,7 +18,7 @@ use baton_core::text::{pct, span, when};
 use baton_install::install::{Applied, Item, Plan};
 use baton_profile::accounts::{Added, Removed};
 use baton_profile::profile::LinkEntry;
-use baton_profile::sync::SyncReport;
+use baton_profile::sync::{Grant, RevokeReport, SyncReport};
 use baton_tui::data::MenuData;
 use baton_tui::layout::Size;
 use baton_tui::state::{Auth, Init, State, initial_state};
@@ -1125,5 +1125,106 @@ pub fn sync_screen(term: &Terminal, view: &SyncView<'_>) -> Vec<Line> {
         width,
         "muted",
     ));
+    lines
+}
+
+/// `baton sync grants`: what the accounts were granted, numbered, and who holds each.
+pub fn grants_screen(term: &Terminal, listed: &[Grant], name: &dyn Fn(&str) -> String) -> Vec<Line> {
+    let width = room(term);
+    let mut lines = banner(term, false);
+    if listed.is_empty() {
+        lines.push(outcome(term, "Nothing is granted on any account.", "same"));
+        return lines;
+    }
+    lines.push(heading("GRANTED", width, term, &plural(listed.len(), "grant")));
+    lines.push(Vec::new());
+    let digits = listed.len().to_string().len().max(2);
+    for (at, grant) in listed.iter().enumerate() {
+        let who: Vec<String> = grant.holders.iter().map(|who| name(who)).collect();
+        lines.extend(wrap_line(
+            &[
+                s(pad_start(&(at + 1).to_string(), digits), "accent bold"),
+                p("  "),
+                s(&grant.label, "bold"),
+                p("  "),
+                s(who.join(", "), "muted"),
+            ],
+            width,
+            digits + 2,
+        ));
+    }
+    lines.push(Vec::new());
+    lines.extend(fact(
+        "Revoke",
+        &[s("baton sync revoke <number...>", "accent bold")],
+        width,
+        10,
+        "muted",
+    ));
+    lines.extend(paragraph(
+        "Takes it away from every account and from ~/.claude.json at once. One account alone never takes back what was granted.",
+        width,
+        "muted",
+    ));
+    lines
+}
+
+/// `baton sync revoke`: what was taken away, and from whom.
+pub fn revoke_screen(term: &Terminal, report: &RevokeReport, name: &dyn Fn(&str) -> String) -> Vec<Line> {
+    let width = room(term);
+    let mut lines = banner(term, false);
+    if report.busy {
+        lines.push(outcome(
+            term,
+            "Another baton is syncing the settings; try again in a moment.",
+            "fail",
+        ));
+        return lines;
+    }
+    if report.revoked.is_empty() {
+        lines.push(outcome(
+            term,
+            "Nobody holds those any more; nothing changed.",
+            "same",
+        ));
+    } else {
+        lines.push(outcome(
+            term,
+            &format!(
+                "Took {} away from every account.",
+                plural(report.revoked.len(), "grant")
+            ),
+            "done",
+        ));
+        lines.push(Vec::new());
+        for revoked in &report.revoked {
+            let from: Vec<String> = revoked.from.iter().map(|who| name(who)).collect();
+            lines.extend(wrap_line(
+                &[
+                    p("  "),
+                    s(&revoked.label, "bold"),
+                    p("  "),
+                    s(format!("from {}", from.join(", ")), "muted"),
+                ],
+                width,
+                4,
+            ));
+        }
+    }
+    for id in &report.unreadable {
+        lines.push(Vec::new());
+        let mut line = mark(term.g, "warn");
+        line.extend([
+            p(" "),
+            s(
+                format!(
+                    "{}'s .claude.json cannot be read, so it keeps what it holds until it can be; the next sync takes it out then.",
+                    name(id)
+                ),
+                "warn",
+            ),
+        ]);
+        lines.extend(wrap_line(&line, width, 2));
+    }
     lines
 }

@@ -62,6 +62,8 @@ Everything happens in a scratch home, so your own accounts and `~/.claude` are n
       and `baton sync take 1 One` settles it.
 - [ ] Approve a tool in a folder on One: Two has the approval too, and taking it away on one account does not take
       it from the other.
+- [ ] `baton sync grants` lists that approval; `baton sync revoke <its number>` takes it from both accounts and from
+      the scratch `~/.claude.json`, and Claude Code asks for it again on either account.
 - [ ] Edit `CLAUDE.md` on both accounts, in different lines: both edits are kept.
 
 ## The menu

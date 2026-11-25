@@ -44,7 +44,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::claude_json::{Loaded, load, rewrite_with};
+use crate::claude_json::{Loaded, load, rewrite, rewrite_with};
 use crate::profile::{SEED_KEYS, SEED_PROJECT_KEYS, normalize_project_key};
 
 /// The name `~/.claude.json` takes part under (never an account's id).
@@ -1045,6 +1045,154 @@ pub fn forget_account(paths: &Paths, id: &str) -> io::Result<()> {
     forget_in(&sync_file(paths), id)
 }
 
+/// Something granted in `.claude.json` that the sync never takes back by itself (a `has...` flag, an
+/// item of an `allowed...` list), and who holds it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Grant {
+    /// Its name in `sync.json`: what [`revoke`] is given.
+    pub leaf: String,
+    /// It in words: `hasCompletedOnboarding`, `E:/work · allowedTools: "Bash(git:*)"`.
+    pub label: String,
+    /// Who holds it: accounts' ids, and [`HOME`].
+    pub holders: Vec<String>,
+}
+
+/// The grants any account or `~/.claude.json` holds: the file's own first, then folder by folder.
+pub fn grants(paths: &Paths, config: &Config) -> Vec<Grant> {
+    let doc = Doc::claude_json(paths, config);
+    let mut state: State = read_json_as(&doc.state).unwrap_or_default();
+    let all = parties(&doc, &mut state);
+    let mut held: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for party in &all {
+        for (id, value) in &party.leaves {
+            if !is_stock(value) && Leaf::parse(id).is_some_and(|leaf| leaf.one_way()) {
+                held.entry(id.clone()).or_default().push(party.id.clone());
+            }
+        }
+    }
+    let mut out: Vec<(Leaf, Grant)> = held
+        .into_iter()
+        .filter_map(|(id, holders)| {
+            let leaf = Leaf::parse(&id)?;
+            let label = leaf.label(&state.spellings);
+            Some((
+                leaf,
+                Grant {
+                    leaf: id,
+                    label,
+                    holders,
+                },
+            ))
+        })
+        .collect();
+    out.sort_by(|(a, _), (b, _)| {
+        (a.project.is_some(), &a.project, &a.key, &a.entry, &a.item).cmp(&(
+            b.project.is_some(),
+            &b.project,
+            &b.key,
+            &b.entry,
+            &b.item,
+        ))
+    });
+    out.into_iter().map(|(_, grant)| grant).collect()
+}
+
+/// A grant taken away, and from whom.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Revoked {
+    /// It in words.
+    pub label: String,
+    /// Whose file it was taken out of: accounts' ids, and [`HOME`].
+    pub from: Vec<String>,
+}
+
+/// What [`revoke`] did.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct RevokeReport {
+    /// The grants taken away.
+    pub revoked: Vec<Revoked>,
+    /// The accounts whose `.claude.json` is there but cannot be read: left alone, so that one keeps
+    /// what it holds.
+    pub unreadable: Vec<String>,
+    /// Whether another baton was syncing, so that nothing was done.
+    pub busy: bool,
+}
+
+/// Takes grants away from every account and from `~/.claude.json` at once: the one thing the sync
+/// lets nobody do alone. Each file is changed under Claude Code's own lock, and only where it holds
+/// the grant; nothing else in it is touched. `leaves` are [`Grant::leaf`]s; any other is passed over.
+/// The sync then knows the grants as gone, so that none of them comes back from a file that held it.
+pub fn revoke(paths: &Paths, config: &Config, leaves: &[String], now: Ms) -> io::Result<RevokeReport> {
+    let Some(_lock) = lock(paths, LOCK_WAIT) else {
+        return Ok(RevokeReport {
+            busy: true,
+            ..RevokeReport::default()
+        });
+    };
+    let doc = Doc::claude_json(paths, config);
+    let before: State = read_json_as(&doc.state).unwrap_or_default();
+    let mut state = before.clone();
+    let all = parties(&doc, &mut state);
+    let wanted: Vec<(String, Leaf)> = leaves
+        .iter()
+        .filter_map(|id| Some((id.clone(), Leaf::parse(id).filter(Leaf::one_way)?)))
+        .collect();
+    let mut from: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut report = RevokeReport::default();
+    for party in &all {
+        if party.unreadable {
+            report.unreadable.push(party.id.clone());
+            continue;
+        }
+        let mut took: Vec<String> = Vec::new();
+        // Asked again with the newer file when Claude Code saved meanwhile: what it holds then counts.
+        let wrote = rewrite(&party.file, |loaded| {
+            took.clear();
+            let Loaded::Json(Value::Object(own)) = loaded else {
+                return None;
+            };
+            let (held, _) = flatten(own, &doc);
+            let mut next = own.clone();
+            for (id, leaf) in &wanted {
+                if held.get(id).is_some_and(|value| !is_stock(value)) {
+                    edit(&mut next, leaf, None, &state.spellings);
+                    took.push(id.clone());
+                }
+            }
+            (!took.is_empty()).then_some(Value::Object(next))
+        })?;
+        if wrote {
+            for id in took {
+                from.entry(id).or_default().push(party.id.clone());
+            }
+        }
+    }
+    for (id, leaf) in &wanted {
+        state.base.remove(id);
+        // Nobody holds it now. A file that could not be read keeps what Baton last saw there: once it
+        // can be, the grant it still holds is a leftover there, and the next sync takes it out.
+        for party in all.iter().filter(|party| !party.unreadable) {
+            if let Some(seen) = state.seen.get_mut(&party.id) {
+                seen.remove(id);
+            }
+        }
+        state
+            .pending
+            .retain(|question| doc.leaf_of(&question.leaf) != Some(id.as_str()));
+        if let Some(holders) = from.remove(id) {
+            report.revoked.push(Revoked {
+                label: leaf.label(&state.spellings),
+                from: holders,
+            });
+        }
+    }
+    // With full sync never used there is nothing the sync knows to put right.
+    if doc.state.exists() {
+        save(&doc, &before, &mut state, now)?;
+    }
+    Ok(report)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1424,6 +1572,92 @@ mod tests {
                 true
             );
         }
+    }
+
+    #[test]
+    fn grants_are_listed_and_taken_away_from_everyone_at_once_for_good() {
+        let (_dir, paths, config) = home();
+        put(
+            &paths.claude_json,
+            &json!({
+                "hasCompletedOnboarding": true, "theme": "dark", "oauthAccount": { "emailAddress": "me" },
+                "projects": { "/w": { "hasTrustDialogAccepted": true, "allowedTools": ["Edit", "Read"] } }
+            }),
+        );
+        all(&paths, &config);
+        change(&paths, "b", |b| {
+            b["projects"]["/old"] = json!({ "hasTrustDialogAccepted": true });
+        });
+        all(&paths, &config);
+        let listed = grants(&paths, &config);
+        let labels: Vec<&str> = listed.iter().map(|grant| grant.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            [
+                "hasCompletedOnboarding",
+                "/old · hasTrustDialogAccepted",
+                "/w · allowedTools: \"Edit\"",
+                "/w · allowedTools: \"Read\"",
+                "/w · hasTrustDialogAccepted",
+            ]
+        );
+        assert_eq!(listed[0].holders, ["~", "a", "b", "c"]);
+        assert_eq!(listed[1].holders, ["a", "b", "c"], "only the accounts sync");
+        // Taken from every account and from the home, and from nothing else.
+        let wanted = vec![listed[2].leaf.clone(), listed[4].leaf.clone()];
+        let report = revoke(&paths, &config, &wanted, T0 + 1).unwrap();
+        assert_eq!(
+            report.revoked,
+            vec![
+                Revoked {
+                    label: "/w · allowedTools: \"Edit\"".into(),
+                    from: vec!["~".into(), "a".into(), "b".into(), "c".into()]
+                },
+                Revoked {
+                    label: "/w · hasTrustDialogAccepted".into(),
+                    from: vec!["~".into(), "a".into(), "b".into(), "c".into()]
+                },
+            ]
+        );
+        let home = load(&paths.claude_json).json().unwrap();
+        assert_eq!(home["projects"]["/w"], json!({ "allowedTools": ["Read"] }));
+        assert_eq!(
+            (
+                home["theme"].as_str(),
+                home["oauthAccount"]["emailAddress"].as_str()
+            ),
+            (Some("dark"), Some("me"))
+        );
+        // No sync brings them back, nor does an account that was away meanwhile.
+        all(&paths, &config);
+        all(&paths, &config);
+        for id in ["a", "b", "c"] {
+            assert_eq!(
+                profile(&paths, id)["projects"]["/w"],
+                json!({ "allowedTools": ["Read"] }),
+                "{id}"
+            );
+            assert_eq!(
+                profile(&paths, id)["projects"]["/old"]["hasTrustDialogAccepted"],
+                true,
+                "{id}"
+            );
+        }
+        assert_eq!(grants(&paths, &config).len(), 3);
+        // Granted again later, it goes everywhere as before.
+        change(&paths, "c", |c| {
+            c["projects"]["/w"]["hasTrustDialogAccepted"] = json!(true)
+        });
+        all(&paths, &config);
+        assert_eq!(
+            profile(&paths, "a")["projects"]["/w"]["hasTrustDialogAccepted"],
+            true
+        );
+        // Nothing to take: nothing is written, and what is not a grant is passed over.
+        let theme = "[null,\"theme\",null,null]".to_owned();
+        let none = revoke(&paths, &config, &[theme, "nonsense".into()], T0 + 2).unwrap();
+        assert_eq!(none, RevokeReport::default());
+        assert_eq!(profile(&paths, "a")["theme"], "dark");
     }
 
     #[test]
